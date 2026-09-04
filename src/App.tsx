@@ -1,18 +1,36 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useIsAuthenticated } from '@azure/msal-react';
+import { useUserRole } from './hooks/useUserRole';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Reservations from './pages/Reservations';
 import Catalog from './pages/Catalog';
+import Reports from './pages/Reports';
 import Audit from './pages/Audit';
-import { ProtectedData } from './ProtectedData'; 
 import type { JSX } from 'react/jsx-runtime';
 
-// Componente para proteger rutas privadas
-function PrivateRoute({ children }: { children: JSX.Element }) {
+// Componente guardián de rutas autenticadas y autorizadas
+function ProtectedRoute({ 
+  children, 
+  allowedRoles 
+}: { 
+  children: JSX.Element; 
+  allowedRoles?: string[] 
+}) {
   const isAuthenticated = useIsAuthenticated();
-  // Si no ha iniciado sesión, lo manda al login; si ya inició, muestra la página
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  const { hasAnyRole } = useUserRole();
+
+  // 1. Si no está autenticado en Azure AD, va directo al login
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // 2. Si la ruta restringe roles y el usuario no posee ninguno de ellos, va al Dashboard
+  if (allowedRoles && !hasAnyRole(allowedRoles)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
 }
 
 export default function App() {
@@ -21,7 +39,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Si ya inició sesión y entra a la raíz o al login, lo mandamos directo al Dashboard */}
+        {/* Redirección inicial según estado de sesión */}
         <Route 
           path="/" 
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} 
@@ -31,13 +49,58 @@ export default function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
         />
 
-        {/* Rutas Protegidas que exigen estar logueado */}
-        <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        <Route path="/reservations" element={<PrivateRoute><Reservations /></PrivateRoute>} />
-        <Route path="/catalog" element={<PrivateRoute><Catalog /></PrivateRoute>} />
-        <Route path="/auditoria" element={<PrivateRoute><Audit /></PrivateRoute>} />
-        
-        <Route path="/test-api" element={<PrivateRoute><ProtectedData /></PrivateRoute>} />
+        {/* Dashboard: accesible por cualquier usuario autenticado */}
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Reservas: Admin, Recepcionista, Huésped */}
+        <Route 
+          path="/reservations" 
+          element={
+            <ProtectedRoute allowedRoles={["Admin", "Recepcionista", "Huesped", "Huésped"]}>
+              <Reservations />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Catálogo: Admin, Recepcionista */}
+        <Route 
+          path="/catalog" 
+          element={
+            <ProtectedRoute allowedRoles={["Admin", "Recepcionista"]}>
+              <Catalog />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Reportería: solo Admin */}
+        <Route 
+          path="/reports" 
+          element={
+            <ProtectedRoute allowedRoles={["Admin"]}>
+              <Reports />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Auditoría: Admin, Auditor */}
+        <Route 
+          path="/audit" 
+          element={
+            <ProtectedRoute allowedRoles={["Admin", "Auditor"]}>
+              <Audit />
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Ruta comodín ante enlaces inexistentes */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

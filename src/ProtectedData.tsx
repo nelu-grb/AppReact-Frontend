@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApi } from './useApi';
+import { useApi } from './hooks/useApi';
 
 export const ProtectedData: React.FC = () => {
   const { fetchWithToken } = useApi();

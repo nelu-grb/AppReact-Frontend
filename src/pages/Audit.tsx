@@ -1,109 +1,169 @@
 import { useState } from 'react';
-import Layout from '../components/Layout';
-import { Sidebar, SidebarFilterGroup } from '../components/Sidebar';
+import Navbar from '../components/Navbar';
 
-// Componente interno para colorear la etiqueta de acción
-function ActionBadge({ action }: { action: string }) {
-  const styles: Record<string, string> = {
-    'check-in': 'bg-red-50 text-red-600 border-red-200',
-    'check-out': 'bg-amber-50 text-amber-600 border-amber-200',
-    'confirmó': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-    'creó': 'bg-teal-50 text-teal-600 border-teal-200',
-    'modificó': 'bg-gray-50 text-gray-600 border-gray-200',
-    'canceló': 'bg-gray-100 text-gray-500 border-gray-300',
-  };
-
-  const currentStyle = styles[action] || 'bg-gray-50 text-gray-800 border-gray-200';
-
-  return (
-    <span className={`px-2.5 py-1 text-xs rounded-sm border font-medium ${currentStyle}`}>
-      {action}
-    </span>
-  );
+interface AuditEvent {
+  id: string;
+  timestamp: string;
+  reservationId: string;
+  user: string;
+  action: 'CREACIÓN' | 'CONFIRMACIÓN' | 'CHECK-IN' | 'CHECK-OUT' | 'CANCELACIÓN';
+  details: string;
+  ip: string;
 }
 
 export default function Audit() {
-  const [activeAccion, setActiveAccion] = useState('Todas');
+  const [filterAction, setFilterAction] = useState('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Datos mockeados basados en la imagen de Auditoría
-  const auditEvents = [
-    { time: '15-mar, 08:02 a. m.', user: 'Carlos Núñez', action: 'check-in', res: 'R-2024-0891', prop: 'Patagonia Sur', detail: 'Check-in completado · Suite 3 · 2 huéspedes' },
-    { time: '15-mar, 08:17 a. m.', user: 'Ana Beltrán', action: 'check-in', res: 'R-2024-0892', prop: 'Torres del Paine', detail: 'Check-in completado · Hab. 7 · 2 huéspedes' },
-    { time: '15-mar, 09:05 a. m.', user: 'Luis Pino', action: 'check-out', res: 'R-2024-0893', prop: 'El Roble', detail: 'Check-out completado · Dorm 4A · duración: 2 noches' },
-    { time: '15-mar, 09:31 a. m.', user: 'María José Lagos', action: 'confirmó', res: 'R-2024-0894', prop: 'Atacama Lodge', detail: 'Reserva confirmada · Hab. 2 · $225.000 CLP' },
-    { time: '15-mar, 10:14 a. m.', user: 'Carlos Núñez', action: 'creó', res: 'R-2024-0895', prop: 'Los Boldos', detail: 'Nueva reserva · Cabaña A · canal: WhatsApp' },
-    { time: '15-mar, 10:45 a. m.', user: 'Ana Beltrán', action: 'check-in', res: 'R-2024-0896', prop: 'Cerro Azul', detail: 'Check-in completado · Hab. 5 · 2 huéspedes' },
-    { time: '15-mar, 11:02 a. m.', user: 'Luis Pino', action: 'creó', res: 'R-2024-0897', prop: 'Torres del Paine', detail: 'Nueva reserva · Hab. 12 · canal: Web' },
-    { time: '15-mar, 11:28 a. m.', user: 'María José Lagos', action: 'check-in', res: 'R-2024-0898', prop: 'Lago Llanquihue', detail: 'Check-in completado · Cabaña 3 · 3 huéspedes' },
-    { time: '15-mar, 12:00 p. m.', user: 'Carlos Núñez', action: 'check-out', res: 'R-2024-0899', prop: 'El Calafate', detail: 'Check-out completado · Hab. 3 · duración: 1 noche' },
-    { time: '15-mar, 03:22 p. m.', user: 'María José Lagos', action: 'modificó', res: 'R-2024-0895', prop: 'Los Boldos', detail: 'Reserva modificada · fechas actualizadas → 17-22 Mar' },
+  const events: AuditEvent[] = [
+    {
+      id: 'EVT-9081',
+      timestamp: '04/09/2026 15:42',
+      reservationId: 'R-2024-0894',
+      user: 'admin.prueba@andesstay.cl',
+      action: 'CONFIRMACIÓN',
+      details: 'Estado cambiado de CREADA a CONFIRMADA. Notificación RabbitMQ enviada.',
+      ip: '190.160.24.12',
+    },
+    {
+      id: 'EVT-9080',
+      timestamp: '04/09/2026 14:15',
+      reservationId: 'R-2024-0894',
+      user: 'carlos.mendoza@gmail.com',
+      action: 'CREACIÓN',
+      details: 'Reserva web generada para Cabaña Bosque Nativo #4.',
+      ip: '201.214.90.3',
+    },
+    {
+      id: 'EVT-9079',
+      timestamp: '04/09/2026 11:28',
+      reservationId: 'R-2024-0891',
+      user: 'admin.prueba@andesstay.cl',
+      action: 'CHECK-IN',
+      details: 'Huésped ingresó a la unidad. Ticket de housekeeping finalizado.',
+      ip: '190.160.24.12',
+    },
+    {
+      id: 'EVT-9078',
+      timestamp: '03/09/2026 18:05',
+      reservationId: 'R-2024-0887',
+      user: 'admin.prueba@andesstay.cl',
+      action: 'CHECK-OUT',
+      details: 'Cierre de estadía. Cupo liberado en catálogo.',
+      ip: '190.160.24.12',
+    },
   ];
 
-  return (
-    <Layout>
-      <div className="flex flex-1 overflow-hidden">
-        
-        {/* Sidebar de Auditoría */}
-        <Sidebar>
-          <SidebarFilterGroup 
-            title="Acción" 
-            items={['Todas', 'creó', 'confirmó', 'check-in', 'check-out', 'modificó', 'canceló']}
-            activeItem={activeAccion}
-            onItemClick={setActiveAccion}
-          />
-        </Sidebar>
+  const filteredEvents = events.filter((evt) => {
+    const matchesAction = filterAction === 'ALL' || evt.action === filterAction;
+    const matchesSearch =
+      evt.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      evt.reservationId.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesAction && matchesSearch;
+  });
 
-        {/* Main Content (Tabla) */}
-        <main className="flex-1 p-8 overflow-y-auto bg-[#F4F6F6]">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-800">Log de auditoría</h1>
-              <p className="text-sm text-gray-500">20 eventos</p>
+  const getActionBadgeColor = (action: AuditEvent['action']) => {
+    switch (action) {
+      case 'CREACIÓN':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'CONFIRMACIÓN':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'CHECK-IN':
+        return 'bg-[#CB6D51]/10 text-[#CB6D51] border-[#CB6D51]/20';
+      case 'CHECK-OUT':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'CANCELACIÓN':
+        return 'bg-rose-50 text-rose-700 border-rose-200';
+      default:
+        return 'bg-gray-50 text-gray-700 border-gray-200';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
+      <Navbar />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
+        {/* Encabezado y etiqueta de Solo Lectura */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Timeline de Auditoría</h1>
+              <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                Solo Lectura
+              </span>
             </div>
-            <div className="flex gap-4">
-              <input 
-                type="text" 
-                placeholder="Buscar usuario, reserva, propiedad" 
-                className="border border-gray-300 rounded-md px-4 py-2 text-sm w-72 shadow-sm focus:outline-none focus:ring-1 focus:ring-[#CB6D51]" 
-              />
-              <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-md font-medium text-sm shadow-sm hover:bg-gray-50 transition-colors">
-                Exportar CSV
-              </button>
-            </div>
+            <p className="text-sm text-gray-500 mt-1">
+              Registro inmutable de eventos consumidos desde Kafka (audit.timeline).
+            </p>
+          </div>
+        </div>
+
+        {/* Barra de Filtros */}
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="w-full md:w-80">
+            <input
+              type="text"
+              placeholder="Buscar por usuario o código reserva..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A423B]"
+            />
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead className="bg-[#F8F9FA] text-[11px] text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 font-semibold">Timestamp</th>
-                  <th className="px-6 py-4 font-semibold">Usuario</th>
-                  <th className="px-6 py-4 font-semibold">Acción</th>
-                  <th className="px-6 py-4 font-semibold">Reserva</th>
-                  <th className="px-6 py-4 font-semibold">Propiedad</th>
-                  <th className="px-6 py-4 font-semibold">Detalle</th>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <label className="text-xs font-bold text-gray-500 uppercase">Evento:</label>
+            <select
+              value={filterAction}
+              onChange={(e) => setFilterAction(e.target.value)}
+              className="bg-gray-50 border border-gray-200 text-xs font-semibold px-3 py-2 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1A423B]"
+            >
+              <option value="ALL">Todos los eventos</option>
+              <option value="CREACIÓN">Creación</option>
+              <option value="CONFIRMACIÓN">Confirmación</option>
+              <option value="CHECK-IN">Check-In</option>
+              <option value="CHECK-OUT">Check-Out</option>
+              <option value="CANCELACIÓN">Cancelación</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Timeline / Tabla de Trazabilidad */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3">Fecha y Hora</th>
+                  <th className="px-6 py-3">Reserva</th>
+                  <th className="px-6 py-3">Tipo Evento</th>
+                  <th className="px-6 py-3">Usuario Responsable</th>
+                  <th className="px-6 py-3">Detalles de Operación</th>
+                  <th className="px-6 py-3 text-right">IP Origen</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
-                {auditEvents.map((evento, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-6 py-3 text-gray-500 font-mono text-xs">{evento.time}</td>
-                    <td className="px-6 py-3 font-medium text-gray-800">{evento.user}</td>
-                    <td className="px-6 py-3">
-                      <ActionBadge action={evento.action} />
+                {filteredEvents.map((evt) => (
+                  <tr key={evt.id} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs text-gray-600 whitespace-nowrap">
+                      {evt.timestamp}
                     </td>
-                    <td className="px-6 py-3 text-gray-600 font-mono text-xs">{evento.res}</td>
-                    <td className="px-6 py-3 text-gray-600">{evento.prop}</td>
-                    <td className="px-6 py-3 text-gray-500 text-xs truncate max-w-xs" title={evento.detail}>
-                      {evento.detail}
+                    <td className="px-6 py-4 font-semibold text-gray-900">{evt.reservationId}</td>
+                    <td className="px-6 py-4">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${getActionBadgeColor(evt.action)}`}>
+                        {evt.action}
+                      </span>
                     </td>
+                    <td className="px-6 py-4 text-gray-600 text-xs">{evt.user}</td>
+                    <td className="px-6 py-4 text-gray-700 text-xs max-w-md">{evt.details}</td>
+                    <td className="px-6 py-4 text-right font-mono text-xs text-gray-400">{evt.ip}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </main>
-      </div>
-    </Layout>
+        </div>
+      </main>
+    </div>
   );
 }
