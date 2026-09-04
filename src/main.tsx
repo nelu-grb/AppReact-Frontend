@@ -1,34 +1,25 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { PublicClientApplication, EventType } from '@azure/msal-browser';
-import type { EventMessage, AuthenticationResult } from '@azure/msal-browser';
+import { PublicClientApplication } from '@azure/msal-browser';
 import { MsalProvider } from '@azure/msal-react';
 import { msalConfig } from './authConfig';
 import App from './App';
+import './index.css';
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-// Inicializar la instancia de MSAL antes del render
-msalInstance.initialize().then(() => {
-  // Activar la cuenta si ya existe una sesión previa
-  if (!msalInstance.getActiveAccount() && msalInstance.getAllAccounts().length > 0) {
-    msalInstance.setActiveAccount(msalInstance.getAllAccounts()[0]);
-  }
+// IMPORTANTE: Esto procesa la respuesta de Azure cuando redirige de vuelta a la app
+await msalInstance.initialize();
 
-  // Listener para capturar el login exitoso y fijar la cuenta activa
-  msalInstance.addEventCallback((event: EventMessage) => {
-    if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
-      const payload = event.payload as AuthenticationResult;
-      msalInstance.setActiveAccount(payload.account);
-    }
-  });
-
-  // Renderizar la aplicación React
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <MsalProvider instance={msalInstance}>
-        <App />
-      </MsalProvider>
-    </React.StrictMode>
-  );
+// Maneja la redirección pendiente si viene de Azure AD
+msalInstance.handleRedirectPromise().catch((error) => {
+    console.error("Error al manejar la promesa de redirección de MSAL:", error);
 });
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <MsalProvider instance={msalInstance}>
+      <App />
+    </MsalProvider>
+  </React.StrictMode>
+);
