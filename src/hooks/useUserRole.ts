@@ -1,36 +1,51 @@
-import { useMsal } from "@azure/msal-react";
+import { useMsal } from '@azure/msal-react';
 
 export function useUserRole() {
   const { accounts } = useMsal();
   const activeAccount = accounts[0];
 
-  // Extraer el array de roles del token emitido por Azure AD
-  const roles = (activeAccount?.idTokenClaims?.roles as string[]) || [];
+  const idTokenClaims = activeAccount?.idTokenClaims as {
+    roles?: string[];
+    name?: string;
+    preferred_username?: string;
+  } | undefined;
 
-  // Extraer nombre completo del usuario
-  const fullName = activeAccount?.name || "Usuario AndesStay";
+  const roles: string[] = idTokenClaims?.roles || [];
+  const fullName: string = activeAccount?.name || idTokenClaims?.name || 'Usuario';
 
-  // Calcular iniciales para el avatar (ej: "Admin Prueba" -> "AP")
-  const initials = fullName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0].toUpperCase())
-    .join("") || "US";
+  const nameParts = fullName.trim().split(' ');
+  const initials =
+    nameParts.length >= 2
+      ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+      : fullName.slice(0, 2).toUpperCase() || 'US';
 
-  // Identificar el rol principal asignado
-  const primaryRole = roles[0] || "Sin Rol";
+  const lowerRoles = roles.map((r) => r.toLowerCase());
+  const isAdmin = lowerRoles.includes('admin') || lowerRoles.includes('administrador');
+  const isRecepcionista = lowerRoles.includes('recepcionista') || lowerRoles.includes('operador');
+  const isHuesped = lowerRoles.includes('huesped') || lowerRoles.includes('huésped');
+  const isAuditor = lowerRoles.includes('auditor');
+
+  const primaryRole =
+    isAdmin ? 'ADMIN' :
+    isRecepcionista ? 'RECEPCIONISTA' :
+    isAuditor ? 'AUDITOR' :
+    isHuesped ? 'HUÉSPED' : 'USUARIO';
+
+  const hasAnyRole = (allowedRoles: string[]): boolean => {
+    if (!allowedRoles || allowedRoles.length === 0) return true;
+    const lowerAllowed = allowedRoles.map((r) => r.toLowerCase());
+    return roles.some((r) => lowerAllowed.includes(r.toLowerCase()));
+  };
 
   return {
     fullName,
     initials,
     roles,
     primaryRole,
-    isAdmin: roles.includes("Admin"),
-    isRecepcionista: roles.includes("Recepcionista"),
-    isHuesped: roles.includes("Huesped") || roles.includes("Huésped"),
-    isAuditor: roles.includes("Auditor"),
-    hasAnyRole: (allowedRoles: string[]) =>
-      roles.some((role) => allowedRoles.includes(role)),
+    isAdmin,
+    isRecepcionista,
+    isHuesped,
+    isAuditor,
+    hasAnyRole,
   };
 }

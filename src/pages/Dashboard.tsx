@@ -1,6 +1,20 @@
+import { useEffect } from 'react';
 import Layout from '../components/Layout';
+import apiClient from '../services/apiClient';
 
 export default function Dashboard() {
+
+/* // useeffefct para pruebas de interceptores 
+ useEffect(() => {
+    // Petición de prueba para disparar los interceptores
+    apiClient.get('/api/test')
+      .then((res) => console.log('Respuesta del backend:', res.data))
+      .catch((err) => console.log('Petición interceptada correctamente:', err));
+  }, []);
+*/
+
+
+
   // Mock Data para simular la respuesta del BFF
   const chartData = [
     { time: '08h', value: 40 }, { time: '09h', value: 65 },

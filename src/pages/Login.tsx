@@ -1,26 +1,20 @@
 import { useMsal } from '@azure/msal-react';
+import {loginRequest} from '../config/authConfig';
 
 export default function Login() {
   const { instance } = useMsal();
 
   const handleLogin = () => {
-    instance.loginRedirect({
-      scopes: [import.meta.env.VITE_API_SCOPE || "User.Read"]
-    }).catch(e => {
-      console.error("Error en la autenticación:", e);
+    instance.loginRedirect(loginRequest).catch((error) => {
+      console.error("Error en la autenticación:", error);
     });
-  };
+  }; // <-- FALTABA ESTE CIERRE
 
   return (
     <div className="min-h-screen bg-[#F0F4F4] flex items-center justify-center p-4 font-sans">
-      
-      {/* Contenedor principal con sombra y bordes redondeados */}
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
         
-        {/* Cabecera superior corporativa */}
         <div className="bg-[#183931] px-8 py-10 flex flex-col items-center justify-center text-center">
-          
-          {/* Logo en color Terracota */}
           <div className="bg-[#C86A51] p-3 rounded-lg mb-4 shadow-sm">
             <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
@@ -36,17 +30,16 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Cuerpo de la tarjeta */}
         <div className="p-8 flex flex-col items-center">
           <h2 className="text-xl font-bold text-gray-800 mb-2">Iniciar Sesión</h2>
           <p className="text-sm text-gray-500 text-center mb-8">
             Autenticación segura mediante Azure AD para gestionar reservas, catálogo y reportes.
           </p>
 
-          {/* Botón de acceso con Microsoft corregido */}
           <button
+            type="button"
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3.5 rounded-lg font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#183931]"
+            className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3.5 rounded-lg font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#183931] cursor-pointer"
           >
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
@@ -64,7 +57,6 @@ export default function Login() {
           </button>
         </div>
       </div>
-      
     </div>
   );
 }

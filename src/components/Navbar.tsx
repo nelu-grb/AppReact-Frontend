@@ -1,100 +1,91 @@
-import { Link, useLocation } from 'react-router-dom';
 import { useMsal } from '@azure/msal-react';
+import { Link, useLocation } from 'react-router-dom';
 import { useUserRole } from '../hooks/useUserRole';
 
 export default function Navbar() {
-  const location = useLocation();
   const { instance } = useMsal();
+  const location = useLocation();
   const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isAuditor } = useUserRole();
 
   const handleLogout = () => {
     instance.logoutRedirect({
       postLogoutRedirectUri: '/login',
-    });
+    }).catch(console.error);
   };
 
+  // Enlaces y visibilidad según rol (RBAC)
   const navLinks = [
-    { name: 'Dashboard', path: '/dashboard', visible: true },
-    { name: 'Reservas', path: '/reservations', visible: true },
-    { name: 'Catálogo', path: '/catalog', visible: isAdmin || isRecepcionista },
-    { name: 'Reportería', path: '/reports', visible: isAdmin },
-    { name: 'Auditoría', path: '/audit', visible: isAdmin || isAuditor },
+    { label: 'Dashboard', path: '/dashboard', show: true },
+    { label: 'Reservas', path: '/reservations', show: !isAuditor },
+    { label: 'Catálogo', path: '/catalog', show: isAdmin || isRecepcionista },
+    { label: 'Reportería', path: '/reports', show: isAdmin },
+    { label: 'Auditoría', path: '/audit', show: isAdmin || isAuditor },
   ];
 
-  const visibleLinks = navLinks.filter((link) => link.visible);
-
   return (
-    <header className="bg-[#1A423B] text-white flex items-center justify-between px-6 h-16 shrink-0 shadow-sm z-10 relative">
+    <header className="bg-[#1A423B] text-white px-6 py-3 flex items-center justify-between shadow-md">
+      {/* Lado izquierdo: Logo e hipervínculos */}
       <div className="flex items-center gap-8">
-        {/* Logo de la Red */}
-        <div className="flex items-center gap-2 font-semibold text-lg tracking-wide">
-          <div className="bg-[#CB6D51] p-1.5 rounded-md shadow-inner">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-            </svg>
-          </div>
-          Red Hospedaje
+        <div className="flex items-center gap-2.5 font-bold text-lg tracking-wide">
+          <span className="p-1.5 bg-[#CB6D51] rounded text-white text-xs font-black leading-none">
+            RH
+          </span>
+          <span className="text-white text-base">Red Hospedaje</span>
         </div>
 
-        {/* Enlaces según rol */}
-        <nav>
-          <ul className="flex space-x-1">
-            {visibleLinks.map((link) => {
-              const isActive = location.pathname.includes(link.path);
+        <nav className="flex items-center gap-1.5">
+          {navLinks
+            .filter((link) => link.show)
+            .map((link) => {
+              const active = location.pathname === link.path;
               return (
-                <li key={link.name}>
-                  <Link
-                    to={link.path}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                      isActive
-                        ? 'bg-[#CB6D51] text-white shadow-sm'
-                        : 'text-[#9CA3AF] hover:text-white hover:bg-[#2A5C53]'
-                    }`}
-                  >
-                    {link.name}
-                  </Link>
-                </li>
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                    active
+                      ? 'bg-[#CB6D51] text-white shadow-xs'
+                      : 'text-emerald-100/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {link.label}
+                </Link>
               );
             })}
-          </ul>
         </nav>
       </div>
 
-      {/* Zona derecha: En vivo, Avatar dinámico y Logout */}
-      <div className="flex items-center gap-5 text-sm">
-        <div className="flex items-center gap-2 text-emerald-400 font-medium">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          En vivo
+      {/* Lado derecho: Estado en vivo, perfil y logout */}
+      <div className="flex items-center gap-5">
+        <div className="flex items-center gap-2 text-xs text-emerald-300 font-medium">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>En vivo</span>
         </div>
 
-        <div className="h-6 w-px bg-[#2A5C53]"></div>
-
-        {/* Datos reales obtenidos del token */}
-        <div className="flex items-center gap-3">
-          <div className="bg-[#2A5C53] text-white rounded-full h-8 w-8 flex items-center justify-center font-bold text-xs tracking-wider border border-[#3A7266]">
+        <div className="flex items-center gap-2.5 pl-3 border-l border-emerald-900/50">
+          <div className="w-8 h-8 rounded-full bg-[#24534B] border border-emerald-700/60 flex items-center justify-center font-bold text-xs text-white">
             {initials}
           </div>
-          <div className="flex flex-col text-left">
-            <span className="text-gray-100 font-medium text-xs leading-tight">
-              {fullName}
-            </span>
-            <span className="text-[#82A098] font-bold text-[10px] tracking-wider uppercase">
+          <div className="text-left leading-tight hidden md:block">
+            <p className="text-xs font-semibold text-white">{fullName}</p>
+            <p className="text-[10px] text-gray-300 tracking-wider font-mono font-medium">
               {primaryRole}
-            </span>
+            </p>
           </div>
         </div>
 
-        {/* Botón Cerrar Sesión */}
         <button
           onClick={handleLogout}
           title="Cerrar sesión"
-          className="p-1.5 text-gray-400 hover:text-rose-400 hover:bg-[#2A5C53] rounded-md transition-colors"
+          className="text-emerald-200/60 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+            />
           </svg>
         </button>
       </div>

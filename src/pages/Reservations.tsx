@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import Navbar from '../components/Navbar';
 import { useUserRole } from '../hooks/useUserRole';
+import { formatCLP, cleanCLP } from '../utils/formatters';
+
 
 export interface Reservation {
   id: string;
@@ -65,15 +67,11 @@ export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista } = useUserRole();
   const canManageStatus = isAdmin || isRecepcionista;
 
-  // Estado principal de reservas
   const [reservations, setReservations] = useState<Reservation[]>(INITIAL_RESERVATIONS);
-
-  // Estados de filtros
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Control del modal de nueva reserva
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     guestName: fullName || '',
@@ -84,18 +82,31 @@ export default function Reservations() {
     amount: '$120.000',
   });
 
-  // Manejador para avanzar o cancelar el ciclo de vida de la reserva
   const handleUpdateStatus = (id: string, nextStatus: Reservation['status']) => {
     setReservations((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
     );
   };
 
-  // Manejador para crear nueva reserva
   const handleCreateReservation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.guestName || !formData.checkInDate || !formData.checkOutDate) {
+
+    // 1. Validar campos requeridos
+    if (!formData.guestName || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
       alert('Por favor completa todos los campos requeridos.');
+      return;
+    }
+
+    // 2. Validar coherencia de fechas (salida posterior a entrada)
+    if (new Date(formData.checkOutDate) <= new Date(formData.checkInDate)) {
+      alert('La fecha de salida debe ser posterior a la fecha de entrada.');
+      return;
+    }
+
+    // 3. Validar monto numérico mayor a 0
+    const numericAmount = cleanCLP(formData.amount);
+    if (numericAmount <= 0) {
+      alert('El monto debe ser superior a $0.');
       return;
     }
 
@@ -109,22 +120,23 @@ export default function Reservations() {
       checkOutDate: formData.checkOutDate,
       channel: formData.channel,
       status: 'CREADA',
-      amount: formData.amount,
+      amount: formData.amount, // Almacena el valor formateado ($500.000) para mostrarlo en la tabla
     };
 
     setReservations((prev) => [newReservation, ...prev]);
     setIsModalOpen(false);
+
+    // Resetear formulario
     setFormData({
       guestName: fullName || '',
       unitName: 'Cabaña Bosque Nativo #4',
       checkInDate: '',
       checkOutDate: '',
       channel: 'Web',
-      amount: '$120.000',
+      amount: '',
     });
   };
 
-  // Filtrado reactivo
   const filteredReservations = reservations.filter((res) => {
     const matchesStatus = statusFilter === 'ALL' || res.status === statusFilter;
     const matchesChannel = channelFilter === 'ALL' || res.channel === channelFilter;
@@ -135,7 +147,6 @@ export default function Reservations() {
     return matchesStatus && matchesChannel && matchesSearch;
   });
 
-  // Estilos según el estado
   const getStatusBadge = (status: Reservation['status']) => {
     switch (status) {
       case 'CREADA':
@@ -153,299 +164,271 @@ export default function Reservations() {
       default:
         return 'bg-gray-50 text-gray-600 border-gray-200';
     }
-  Para dejar la página de **Reservations** 100% operativa, la estructuramos en tres partes: control de estado con filtros reactivos (estado y canal), tabla de visualización dinámica y un modal con formulario para crear nuevas reservas.
-
-Aquí tienes el componente completo listo para integrar (adaptado para React/TypeScript con Tailwind CSS):
-
-```tsx
-import React, { useState, useMemo } from 'react';
-
-// Tipos
-export type ReservationStatus = 'CONFIRMED' | 'PENDING' | 'CANCELLED' | 'CHECKED_IN';
-export type ReservationChannel = 'DIRECT' | 'BOOKING' | 'AIRBNB' | 'EXPEDIA';
-
-export interface Reservation {
-  id: string;
-  guestName: string;
-  checkIn: string;
-  checkOut: string;
-  roomNumber: string;
-  channel: ReservationChannel;
-  status: ReservationStatus;
-  totalAmount: number;
-}
-
-const INITIAL_RESERVATIONS: Reservation[] = [
-  { id: 'RES-001', guestName: 'Carlos Mendoza', checkIn: '2026-09-10', checkOut: '2026-09-15', roomNumber: '102', channel: 'BOOKING', status: 'CONFIRMED', totalAmount: 450 },
-  { id: 'RES-002', guestName: 'Elena Rostova', checkIn: '2026-09-12', checkOut: '2026-09-14', roomNumber: '205', channel: 'AIRBNB', status: 'PENDING', totalAmount: 220 },
-  { id: 'RES-003', guestName: 'Felipe Araya', checkIn: '2026-09-08', checkOut: '2026-09-11', roomNumber: '301', channel: 'DIRECT', status: 'CHECKED_IN', totalAmount: 310 },
-  { id: 'RES-004', guestName: 'Ana Silva', checkIn: '2026-09-05', checkOut: '2026-09-07', roomNumber: '104', channel: 'EXPEDIA', status: 'CANCELLED', totalAmount: 180 },
-];
-
-export const ReservationsPage: React.FC = () => {
-  const [reservations, setReservations] = useState<Reservation[]>(INITIAL_RESERVATIONS);
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [channelFilter, setChannelFilter] = useState<string>('ALL');
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-
-  // Form State
-  const [formData, setFormData] = useState({
-    guestName: '',
-    checkIn: '',
-    checkOut: '',
-    roomNumber: '',
-    channel: 'DIRECT' as ReservationChannel,
-    status: 'CONFIRMED' as ReservationStatus,
-    totalAmount: '',
-  });
-
-  // Filtrado reactivo en memoria
-  const filteredReservations = useMemo(() => {
-    return reservations.filter((res) => {
-      const matchStatus = statusFilter === 'ALL' || res.status === statusFilter;
-      const matchChannel = channelFilter === 'ALL' || res.channel === channelFilter;
-      return matchStatus && matchChannel;
-    });
-  }, [reservations, statusFilter, channelFilter]);
-
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.guestName || !formData.checkIn || !formData.checkOut || !formData.roomNumber) return;
-
-    const newRes: Reservation = {
-      id: `RES-${String(reservations.length + 1).padStart(3, '0')}`,
-      guestName: formData.guestName,
-      checkIn: formData.checkIn,
-      checkOut: formData.checkOut,
-      roomNumber: formData.roomNumber,
-      channel: formData.channel,
-      status: formData.status,
-      totalAmount: Number(formData.totalAmount) || 0,
-    };
-
-    setReservations([newRes, ...reservations]);
-    setIsModalOpen(false);
-    setFormData({
-      guestName: '',
-      checkIn: '',
-      checkOut: '',
-      roomNumber: '',
-      channel: 'DIRECT',
-      status: 'CONFIRMED',
-      totalAmount: '',
-    });
-  };
-
-  const getStatusBadge = (status: ReservationStatus) => {
-    const styles: Record<ReservationStatus, string> = {
-      CONFIRMED: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
-      CHECKED_IN: 'bg-blue-100 text-blue-800 border-blue-200',
-      CANCELLED: 'bg-rose-100 text-rose-800 border-rose-200',
-    };
-    return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles[status]}`}>{status}</span>;
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Reservaciones</h1>
-          <p className="text-sm text-slate-500">Administra, filtra y crea reservas de huéspedes.</p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-sm transition-colors"
-        >
-          + Nueva Reserva
-        </button>
-      </div>
+    <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
+      <Navbar />
 
-      {/* Barra de Filtros */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Filtrar por Estado</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Reservas</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Control del ciclo de vida de estadías y asignaciones en tiempo real.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setFormData((prev) => ({ ...prev, guestName: fullName || '' }));
+              setIsModalOpen(true);
+            }}
+            className="bg-[#CB6D51] hover:bg-[#b85e44] text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
           >
-            <option value="ALL">Todos los estados</option>
-            <option value="CONFIRMED">CONFIRMED</option>
-            <option value="PENDING">PENDING</option>
-            <option value="CHECKED_IN">CHECKED_IN</option>
-            <option value="CANCELLED">CANCELLED</option>
-          </select>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Nueva Reserva
+          </button>
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Filtrar por Canal</label>
-          <select
-            value={channelFilter}
-            onChange={(e) => setChannelFilter(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-          >
-            <option value="ALL">Todos los canales</option>
-            <option value="DIRECT">DIRECT</option>
-            <option value="BOOKING">BOOKING</option>
-            <option value="AIRBNB">AIRBNB</option>
-            <option value="EXPEDIA">EXPEDIA</option>
-          </select>
-        </div>
-      </div>
+        {/* Filtros */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="w-full md:w-80">
+            <input
+              type="text"
+              placeholder="Buscar por código, huésped o unidad..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A423B]"
+            />
+          </div>
 
-      {/* Tabla de Reservas */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-slate-700 border-b border-slate-200 text-xs uppercase font-semibold">
-              <tr>
-                <th className="px-6 py-3">ID / Huésped</th>
-                <th className="px-6 py-3">Fechas</th>
-                <th className="px-6 py-3">Habitación</th>
-                <th className="px-6 py-3">Canal</th>
-                <th className="px-6 py-3">Estado</th>
-                <th className="px-6 py-3 text-right">Monto Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredReservations.length > 0 ? (
-                filteredReservations.map((res) => (
-                  <tr key={res.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900">{res.guestName}</div>
-                      <div className="text-xs text-slate-400">{res.id}</div>
-                    </td>
-                    <td className="px-6 py-4 text-xs">
-                      <div><span className="font-semibold">In:</span> {res.checkIn}</div>
-                      <div><span className="font-semibold">Out:</span> {res.checkOut}</div>
-                    </td>
-                    <td className="px-6 py-4 font-mono font-medium text-slate-800">#{res.roomNumber}</td>
-                    <td className="px-6 py-4 font-medium text-slate-700">{res.channel}</td>
-                    <td className="px-6 py-4">{getStatusBadge(res.status)}</td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-900">${res.totalAmount}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-400 text-sm">
-                    No se encontraron reservas con los filtros aplicados.
-                  </td>
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-500 uppercase">Estado:</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-gray-50 border border-gray-200 text-xs font-semibold px-3 py-2 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1A423B]"
+              >
+                <option value="ALL">Todos</option>
+                <option value="CREADA">CREADA</option>
+                <option value="CONFIRMADA">CONFIRMADA</option>
+                <option value="CHECKIN_PENDIENTE">CHECKIN_PENDIENTE</option>
+                <option value="EN_ESTADÍA">EN_ESTADÍA</option>
+                <option value="CHECKOUT">CHECKOUT</option>
+                <option value="CANCELADA">CANCELADA</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-500 uppercase">Canal:</label>
+              <select
+                value={channelFilter}
+                onChange={(e) => setChannelFilter(e.target.value)}
+                className="bg-gray-50 border border-gray-200 text-xs font-semibold px-3 py-2 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1A423B]"
+              >
+                <option value="ALL">Todos</option>
+                <option value="Web">Web</option>
+                <option value="Instagram">Instagram</option>
+                <option value="WhatsApp">WhatsApp</option>
+                <option value="Directo">Directo</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/70 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3.5">Código / Huésped</th>
+                  <th className="px-6 py-3.5">Alojamiento</th>
+                  <th className="px-6 py-3.5">Fechas</th>
+                  <th className="px-6 py-3.5">Canal</th>
+                  <th className="px-6 py-3.5">Monto</th>
+                  <th className="px-6 py-3.5">Estado</th>
+                  {canManageStatus && <th className="px-6 py-3.5 text-right">Acciones Operador</th>}
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-sm">
+                {filteredReservations.length > 0 ? (
+                  filteredReservations.map((res) => (
+                    <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-gray-900">{res.guestName}</div>
+                        <div className="text-xs font-mono text-gray-500">{res.code}</div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-800">{res.unitName}</td>
+                      <td className="px-6 py-4 text-xs text-gray-600">
+                        <div><span className="font-semibold">In:</span> {res.checkInDate}</div>
+                        <div><span className="font-semibold">Out:</span> {res.checkOutDate}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                          {res.channel}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-gray-900">{res.amount}</td>
+                      <td className="px-6 py-4">
+                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded border ${getStatusBadge(res.status)}`}>
+                          {res.status}
+                        </span>
+                      </td>
 
-      {/* Modal: Nueva Reserva */}
+                      {canManageStatus && (
+                        <td className="px-6 py-4 text-right">
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            {res.status === 'CREADA' && (
+                              <button
+                                onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                              >
+                                Confirmar
+                              </button>
+                            )}
+
+                            {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
+                              <button
+                                onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
+                                className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                              >
+                                Check-In
+                              </button>
+                            )}
+
+                            {res.status === 'EN_ESTADÍA' && (
+                              <button
+                                onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
+                                className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                              >
+                                Check-Out
+                              </button>
+                            )}
+
+                            {(res.status === 'CREADA' || res.status === 'CONFIRMADA') && (
+                              <button
+                                onClick={() => handleUpdateStatus(res.id, 'CANCELADA')}
+                                className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={canManageStatus ? 7 : 6} className="px-6 py-8 text-center text-gray-400 text-sm">
+                      No se encontraron reservas con los filtros seleccionados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+
+      {/* Modal Nueva Reserva */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-900 mb-4">Registrar Nueva Reserva</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Crear Nueva Reserva</h2>
+            <form onSubmit={handleCreateReservation} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Nombre Huésped</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nombre Huésped</label>
                 <input
                   type="text"
                   required
                   value={formData.guestName}
                   onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Ej. Matías Vidal"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
+                  placeholder="Ej. Juan Pérez"
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Unidad / Habitación</label>
+                <select
+                  value={formData.unitName}
+                  onChange={(e) => setFormData({ ...formData, unitName: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
+                >
+                  <option value="Cabaña Bosque Nativo #4">Cabaña Bosque Nativo #4 (Pucón)</option>
+                  <option value="Habitación Vista Volcán #102">Habitación Vista Volcán #102 (Puerto Varas)</option>
+                  <option value="Lodge Termas del Valle #1">Lodge Termas del Valle #1 (Curacautín)</option>
+                  <option value="Habitación Estándar #08">Habitación Estándar #08 (San Pedro)</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Check-in</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Entrada</label>
                   <input
                     type="date"
                     required
-                    value={formData.checkIn}
-                    onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={formData.checkInDate}
+                    onChange={(e) => setFormData({ ...formData, checkInDate: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Check-out</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Fecha Salida</label>
                   <input
                     type="date"
                     required
-                    value={formData.checkOut}
-                    onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={formData.checkOutDate}
+                    onChange={(e) => setFormData({ ...formData, checkOutDate: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">N° Habitación</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.roomNumber}
-                    onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Ej. 204"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Monto Total ($)</label>
-                  <input
-                    type="number"
-                    value={formData.totalAmount}
-                    onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Ej. 350"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Canal</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Canal de Origen</label>
                   <select
                     value={formData.channel}
-                    onChange={(e) => setFormData({ ...formData, channel: e.target.value as ReservationChannel })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(e) => setFormData({ ...formData, channel: e.target.value as Reservation['channel'] })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                   >
-                    <option value="DIRECT">DIRECT</option>
-                    <option value="BOOKING">BOOKING</option>
-                    <option value="AIRBNB">AIRBNB</option>
-                    <option value="EXPEDIA">EXPEDIA</option>
+                    <option value="Web">Web</option>
+                    <option value="Instagram">Instagram</option>
+                    <option value="WhatsApp">WhatsApp</option>
+                    <option value="Directo">Directo</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Estado Inicial</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as ReservationStatus })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="PENDING">PENDING</option>
-                    <option value="CHECKED_IN">CHECKED_IN</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                  </select>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Monto Estimado</label>
+                  <input
+                    type="text"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
+                    placeholder="$120.000"
+                  />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-white bg-[#CB6D51] hover:bg-[#b85e44] rounded-lg shadow-sm transition-colors"
                 >
-                  Guardar Reserva
+                  Crear Reserva
                 </button>
               </div>
             </form>
@@ -454,4 +437,4 @@ export const ReservationsPage: React.FC = () => {
       )}
     </div>
   );
-};
+}

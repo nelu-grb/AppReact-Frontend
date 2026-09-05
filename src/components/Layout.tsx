@@ -1,15 +1,15 @@
-import type { ReactNode } from 'react';
-import Navbar from './Navbar'; // Tu barra verde oscuro
+import React from 'react';
+import Navbar from './Navbar';
 
 interface LayoutProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div className="min-h-screen bg-[#F4F6F6]"> {/* Color de fondo general gris claro */}
+    <div className="min-h-screen bg-[#F4F6F6] flex flex-col font-sans">
       <Navbar />
-      <main className="flex h-[calc(100vh-64px)]">
+      <main className="flex-1 flex flex-col overflow-hidden">
         {children}
       </main>
     </div>
