@@ -4,14 +4,14 @@ import apiClient from '../services/apiClient';
 
 export default function Dashboard() {
 
-/* // useeffefct para pruebas de interceptores 
+ // useeffefct para pruebas de interceptores 
  useEffect(() => {
     // Petición de prueba para disparar los interceptores
     apiClient.get('/api/test')
       .then((res) => console.log('Respuesta del backend:', res.data))
       .catch((err) => console.log('Petición interceptada correctamente:', err));
   }, []);
-*/
+
 
 
 
