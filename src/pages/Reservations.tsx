@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
-
+import { createReservation, getReservations, type ReservationRequest } from '../services/reservationService';
 
 export interface Reservation {
   id: string;
@@ -16,58 +16,20 @@ export interface Reservation {
   amount: string;
 }
 
-const INITIAL_RESERVATIONS: Reservation[] = [
-  {
-    id: '1',
-    code: 'R-2024-0894',
-    guestName: 'Carlos Mendoza',
-    unitName: 'Cabaña Bosque Nativo #4',
-    checkInDate: '2026-09-05',
-    checkOutDate: '2026-09-08',
-    channel: 'Web',
-    status: 'CREADA',
-    amount: '$210.000',
-  },
-  {
-    id: '2',
-    code: 'R-2024-0893',
-    guestName: 'Valentina Silva',
-    unitName: 'Habitación Vista Volcán #102',
-    checkInDate: '2026-09-04',
-    checkOutDate: '2026-09-07',
-    channel: 'Instagram',
-    status: 'CONFIRMADA',
-    amount: '$145.000',
-  },
-  {
-    id: '3',
-    code: 'R-2024-0891',
-    guestName: 'Carlos Núñez',
-    unitName: 'Lodge Termas del Valle #1',
-    checkInDate: '2026-09-04',
-    checkOutDate: '2026-09-06',
-    channel: 'Directo',
-    status: 'EN_ESTADÍA',
-    amount: '$180.000',
-  },
-  {
-    id: '4',
-    code: 'R-2024-0887',
-    guestName: 'Huesped Prueba',
-    unitName: 'Habitación Estándar #08',
-    checkInDate: '2026-09-01',
-    checkOutDate: '2026-09-03',
-    channel: 'Web',
-    status: 'CHECKOUT',
-    amount: '$95.000',
-  },
-];
+// Mapeo auxiliar de nombres a unitId esperado por Spring Boot
+const UNIT_MAPPING: Record<string, number> = {
+  'Cabaña Bosque Nativo #4': 1,
+  'Habitación Vista Volcán #102': 2,
+  'Lodge Termas del Valle #1': 3,
+  'Habitación Estándar #08': 4,
+};
 
 export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista } = useUserRole();
   const canManageStatus = isAdmin || isRecepcionista;
 
-  const [reservations, setReservations] = useState<Reservation[]>(INITIAL_RESERVATIONS);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,6 +37,7 @@ export default function Reservations() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     guestName: fullName || '',
+    guestEmail: '',
     unitName: 'Cabaña Bosque Nativo #4',
     checkInDate: '',
     checkOutDate: '',
@@ -82,59 +45,109 @@ export default function Reservations() {
     amount: '$120.000',
   });
 
+  // Cargar reservas desde la base de datos vía Spring Boot
+  const fetchReservations = async () => {
+    try {
+      setLoading(true);
+      const data = await getReservations();
+      if (Array.isArray(data) && data.length > 0) {
+        // Mapear respuesta del backend al modelo de vista
+        const mapped: Reservation[] = data.map((item: any) => ({
+          id: String(item.id || item.code || Date.now()),
+          code: item.code || `R-2026-${item.id || '000'}`,
+          guestName: item.guestId || item.guestName || 'Huésped',
+          unitName: item.unitName || `Unidad #${item.unitId}`,
+          checkInDate: item.startDate || item.checkInDate,
+          checkOutDate: item.endDate || item.checkOutDate,
+          channel: (item.channel as Reservation['channel']) || 'Web',
+          status: item.status || 'CREADA',
+          amount: formatCLP(item.totalAmount || 0),
+        }));
+        setReservations(mapped);
+      }
+    } catch (error) {
+      console.warn('Backend aún sin datos o error de conexión, manteniendo vista local:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReservations();
+  }, []);
+
   const handleUpdateStatus = (id: string, nextStatus: Reservation['status']) => {
     setReservations((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
     );
   };
 
-  const handleCreateReservation = (e: React.FormEvent) => {
+  const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. Validar campos requeridos
-    if (!formData.guestName || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
+    if (!formData.guestName || !formData.guestEmail || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
       alert('Por favor completa todos los campos requeridos.');
       return;
     }
 
-    // 2. Validar coherencia de fechas (salida posterior a entrada)
     if (new Date(formData.checkOutDate) <= new Date(formData.checkInDate)) {
       alert('La fecha de salida debe ser posterior a la fecha de entrada.');
       return;
     }
 
-    // 3. Validar monto numérico mayor a 0
     const numericAmount = cleanCLP(formData.amount);
     if (numericAmount <= 0) {
       alert('El monto debe ser superior a $0.');
       return;
     }
 
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const newReservation: Reservation = {
-      id: Date.now().toString(),
-      code: `R-2026-${randomNum}`,
-      guestName: formData.guestName,
-      unitName: formData.unitName,
-      checkInDate: formData.checkInDate,
-      checkOutDate: formData.checkOutDate,
-      channel: formData.channel,
-      status: 'CREADA',
-      amount: formData.amount, // Almacena el valor formateado ($500.000) para mostrarlo en la tabla
+    // 1. Armar el payload exacto para Spring Boot (ReservationRequest DTO)
+    const payload: ReservationRequest = {
+      unitId: UNIT_MAPPING[formData.unitName] || 1,
+      guestId: formData.guestName,
+      guestEmail: formData.guestEmail,
+      startDate: formData.checkInDate,
+      endDate: formData.checkOutDate,
+      totalAmount: numericAmount,
     };
 
-    setReservations((prev) => [newReservation, ...prev]);
-    setIsModalOpen(false);
+    try {
+      // 2. Enviar POST al backend
+      const backendResponse = await createReservation(payload);
 
-    // Resetear formulario
-    setFormData({
-      guestName: fullName || '',
-      unitName: 'Cabaña Bosque Nativo #4',
-      checkInDate: '',
-      checkOutDate: '',
-      channel: 'Web',
-      amount: '',
-    });
+      // 3. Crear item para la UI con el ID o código devuelto
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      const newReservation: Reservation = {
+        id: String(backendResponse?.id || Date.now()),
+        code: backendResponse?.code || `R-2026-${randomNum}`,
+        guestName: formData.guestName,
+        unitName: formData.unitName,
+        checkInDate: formData.checkInDate,
+        checkOutDate: formData.checkOutDate,
+        channel: formData.channel,
+        status: 'CREADA',
+        amount: formData.amount,
+      };
+
+      setReservations((prev) => [newReservation, ...prev]);
+      setIsModalOpen(false);
+
+      // Resetear formulario
+      setFormData({
+        guestName: fullName || '',
+        guestEmail: '',
+        unitName: 'Cabaña Bosque Nativo #4',
+        checkInDate: '',
+        checkOutDate: '',
+        channel: 'Web',
+        amount: '$120.000',
+      });
+
+      alert('¡Reserva creada y guardada en base de datos con éxito!');
+    } catch (error) {
+      console.error('Error al guardar en el backend:', error);
+      alert('Error de conexión al guardar la reserva en el servidor.');
+    }
   };
 
   const filteredReservations = reservations.filter((res) => {
@@ -255,7 +268,13 @@ export default function Reservations() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
-                {filteredReservations.length > 0 ? (
+                {loading ? (
+                  <tr>
+                    <td colSpan={canManageStatus ? 7 : 6} className="px-6 py-8 text-center text-gray-400 text-sm">
+                      Cargando reservas desde la base de datos...
+                    </td>
+                  </tr>
+                ) : filteredReservations.length > 0 ? (
                   filteredReservations.map((res) => (
                     <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
                       <td className="px-6 py-4">
@@ -350,6 +369,18 @@ export default function Reservations() {
                   onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                   placeholder="Ej. Juan Pérez"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Correo Electrónico Huésped</label>
+                <input
+                  type="email"
+                  required
+                  value={formData.guestEmail}
+                  onChange={(e) => setFormData({ ...formData, guestEmail: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
+                  placeholder="ejemplo@correo.com"
                 />
               </div>
 
