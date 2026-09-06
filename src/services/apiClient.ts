@@ -33,7 +33,7 @@ apiClient.interceptors.request.use(
         });
 
         // Inyecta el Bearer Token en la cabecera
-        config.headers.Authorization = `Bearer ${response.accessToken}`;
+        config.headers.set('Authorization', `Bearer ${response.accessToken}`);
         console.log(`[API Client] Token inyectado para ${account.username}: ${response.accessToken.substring(0, 10)}...`);
       } catch (error) {
         // Si el token expiró y no se puede renovar en silencio, requiere interacción

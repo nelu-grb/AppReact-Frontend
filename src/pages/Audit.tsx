@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Navbar from '../components/Navbar';
 
 interface AuditEvent {
   id: string;
@@ -81,8 +80,6 @@ export default function Audit() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
-      <Navbar />
-
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
         {/* Encabezado y etiqueta de Solo Lectura */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

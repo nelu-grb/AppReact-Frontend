@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Navbar from '../components/Navbar';
 
 export type PropertyType = 'Hostal' | 'Cabaña' | 'Lodge';
 
@@ -150,8 +149,6 @@ export default function Catalog() {
 
   return (
     <div className="min-h-screen bg-[#F4F6F6] flex flex-col font-sans">
-      <Navbar />
-
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Barra lateral izquierda */}
         <aside className="w-full md:w-56 bg-[#F4EFEA]/80 p-6 flex flex-col justify-between shrink-0 border-r border-[#E5DDD5]">

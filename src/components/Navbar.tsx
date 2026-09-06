@@ -1,10 +1,9 @@
 import { useMsal } from '@azure/msal-react';
-import { Link, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useUserRole } from '../hooks/useUserRole';
 
 export default function Navbar() {
   const { instance } = useMsal();
-  const location = useLocation();
   const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isAuditor } = useUserRole();
 
   const handleLogout = () => {
@@ -36,22 +35,21 @@ export default function Navbar() {
         <nav className="flex items-center gap-1.5">
           {navLinks
             .filter((link) => link.show)
-            .map((link) => {
-              const active = location.pathname === link.path;
-              return (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-                    active
+            .map((link) => (
+              <NavLink
+                key={link.path}
+                to={link.path}
+                className={({ isActive }) =>
+                  `px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                    isActive
                       ? 'bg-[#CB6D51] text-white shadow-xs'
                       : 'text-emerald-100/70 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
+                  }`
+                }
+              >
+                {link.label}
+              </NavLink>
+            ))}
         </nav>
       </div>
 
@@ -77,7 +75,7 @@ export default function Navbar() {
         <button
           onClick={handleLogout}
           title="Cerrar sesión"
-          className="text-emerald-200/60 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+          className="text-emerald-200/60 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path

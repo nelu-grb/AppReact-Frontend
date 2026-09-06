@@ -1,27 +1,34 @@
 import apiClient from './apiClient';
 
 export interface ReservationRequest {
-  unitId: number;
-  guestId: string;
-  guestEmail: string;
-  startDate: string; // formato YYYY-MM-DD
-  endDate: string;   // formato YYYY-MM-DD
+  guestId?: string;
+  guestName: string;
+  unitId: number | string;
+  startDate: string;
+  endDate: string;
+  channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
   totalAmount: number;
 }
 
-export interface ReservationResponse extends ReservationRequest {
-  code: string;
-  id?: number | string;
-  status?: string;
-  createdAt?: string;
-}
+export type ReservationStatus = 
+  | 'CREADA' 
+  | 'CONFIRMADA' 
+  | 'CHECKIN_PENDIENTE' 
+  | 'EN_ESTADÍA' 
+  | 'CHECKOUT' 
+  | 'CANCELADA';
 
-export const getReservations = async (): Promise<ReservationResponse[]> => {
-  const response = await apiClient.get('/api/reservations');
-  return response.data;
+export const getReservations = async () => {
+  const res = await apiClient.get('/api/reservations');
+  return res.data;
 };
 
-export const createReservation = async (data: ReservationRequest): Promise<ReservationResponse> => {
-  const response = await apiClient.post('/api/reservations', data);
-  return response.data;
+export const createReservation = async (data: ReservationRequest) => {
+  const res = await apiClient.post('/api/reservations', data);
+  return res.data;
+};
+
+export const updateReservationStatus = async (id: string, status: ReservationStatus) => {
+  const res = await apiClient.put(`/api/reservations/${id}/status`, { status });
+  return res.data;
 };

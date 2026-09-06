@@ -1,4 +1,3 @@
-import Navbar from '../components/Navbar';
 
 export default function Reports() {
   const topUnits = [
@@ -10,8 +9,6 @@ export default function Reports() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
-      <Navbar />
-
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8">
         {/* Cabecera de la sección */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

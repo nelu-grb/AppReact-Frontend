@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import Navbar from '../components/Navbar';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { createReservation, getReservations, type ReservationRequest } from '../services/reservationService';
@@ -61,7 +60,7 @@ export default function Reservations() {
           checkOutDate: item.endDate || item.checkOutDate,
           channel: (item.channel as Reservation['channel']) || 'Web',
           status: item.status || 'CREADA',
-          amount: formatCLP(item.totalAmount || 0),
+          amount: item.totalAmount ?? item.amount ?? 0,
         }));
         setReservations(mapped);
       }
@@ -105,10 +104,11 @@ export default function Reservations() {
     const payload: ReservationRequest = {
       unitId: UNIT_MAPPING[formData.unitName] || 1,
       guestId: formData.guestName,
-      guestEmail: formData.guestEmail,
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
       totalAmount: numericAmount,
+      guestName: '',
+      channel: formData.channel
     };
 
     try {
@@ -181,8 +181,6 @@ export default function Reservations() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
-      <Navbar />
-
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -291,13 +289,12 @@ export default function Reservations() {
                           {res.channel}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-bold text-gray-900">{res.amount}</td>
+                      <td className="px-6 py-4 font-bold text-gray-900">{formatCLP(res.amount)}</td>
                       <td className="px-6 py-4">
                         <span className={`text-[11px] font-bold px-2.5 py-1 rounded border ${getStatusBadge(res.status)}`}>
                           {res.status}
                         </span>
                       </td>
-
                       {canManageStatus && (
                         <td className="px-6 py-4 text-right">
                           <div className="inline-flex items-center gap-1.5 justify-end">
@@ -310,6 +307,7 @@ export default function Reservations() {
                               </button>
                             )}
 
+                            {/* 2. Check-In: Visible tanto en CREADA como en CONFIRMADA, pero bloqueado en CREADA */}
                             {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
                               <button
                                 onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}

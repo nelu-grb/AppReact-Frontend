@@ -5,13 +5,6 @@ import apiClient from '../services/apiClient';
 export default function Dashboard() {
 
  // useeffefct para pruebas de interceptores 
- useEffect(() => {
-    // Petición de prueba para disparar los interceptores
-    apiClient.get('/api/test')
-      .then((res) => console.log('Respuesta del backend:', res.data))
-      .catch((err) => console.log('Petición interceptada correctamente:', err));
-  }, []);
-
 
 
 
@@ -50,9 +43,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <Layout>
       <div className="flex-1 p-8 overflow-y-auto bg-[#F4F6F6]">
-        
         {/* Fila 1: Tarjetas Superiores (KPIs) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <div className="bg-[#1A423B] rounded-lg p-6 shadow-sm flex flex-col justify-between">
@@ -171,6 +162,5 @@ export default function Dashboard() {
         </div>
 
       </div>
-    </Layout>
   );
 }
