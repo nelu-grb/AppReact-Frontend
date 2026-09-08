@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
-import { createReservation, getReservations, type ReservationRequest } from '../services/reservationService';
+import { 
+  createReservation, 
+  getReservations, 
+  updateReservationStatus,
+  type ReservationRequest 
+} from '../services/reservationService';
 
 export interface Reservation {
   id: string;
   code: string;
   guestName: string;
+  guestEmail: string;
   unitName: string;
   checkInDate: string;
   checkOutDate: string;
@@ -15,13 +21,13 @@ export interface Reservation {
   amount: string;
 }
 
-// Mapeo auxiliar de nombres a unitId esperado por Spring Boot
-const UNIT_MAPPING: Record<string, number> = {
-  'Cabaña Bosque Nativo #4': 1,
-  'Habitación Vista Volcán #102': 2,
-  'Lodge Termas del Valle #1': 3,
-  'Habitación Estándar #08': 4,
-};
+// Catálogo de unidades: Única fuente de verdad en el cliente
+export const AVAILABLE_UNITS = [
+  { id: 1, name: 'Cabaña Bosque Nativo #4', location: 'Pucón' },
+  { id: 2, name: 'Habitación Vista Volcán #102', location: 'Puerto Varas' },
+  { id: 3, name: 'Lodge Termas del Valle #1', location: 'Curacautín' },
+  { id: 4, name: 'Habitación Estándar #08', location: 'San Pedro' },
+];
 
 export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista } = useUserRole();
@@ -37,31 +43,34 @@ export default function Reservations() {
   const [formData, setFormData] = useState({
     guestName: fullName || '',
     guestEmail: '',
-    unitName: 'Cabaña Bosque Nativo #4',
+    unitId: 1, // Se almacena directamente el ID numérico
     checkInDate: '',
     checkOutDate: '',
     channel: 'Web' as Reservation['channel'],
     amount: '$120.000',
   });
 
-  // Cargar reservas desde la base de datos vía Spring Boot
+  // Cargar reservas desde Spring Boot
   const fetchReservations = async () => {
     try {
       setLoading(true);
       const data = await getReservations();
       if (Array.isArray(data) && data.length > 0) {
-        // Mapear respuesta del backend al modelo de vista
-        const mapped: Reservation[] = data.map((item: any) => ({
-          id: String(item.id || item.code || Date.now()),
-          code: item.code || `R-2026-${item.id || '000'}`,
-          guestName: item.guestId || item.guestName || 'Huésped',
-          unitName: item.unitName || `Unidad #${item.unitId}`,
-          checkInDate: item.startDate || item.checkInDate,
-          checkOutDate: item.endDate || item.checkOutDate,
-          channel: (item.channel as Reservation['channel']) || 'Web',
-          status: item.status || 'CREADA',
-          amount: item.totalAmount ?? item.amount ?? 0,
-        }));
+        const mapped: Reservation[] = data.map((item: any) => {
+          const matchedUnit = AVAILABLE_UNITS.find((u) => u.id === Number(item.unitId));
+          return {
+            id: String(item.id || item.code || Date.now()),
+            code: item.code || `R-2026-${item.id || '000'}`,
+            guestName: item.guestName || item.guestId || 'Huésped',
+            guestEmail: item.guestEmail || 'sin-email@dominio.com',
+            unitName: item.unitName || matchedUnit?.name || `Unidad #${item.unitId}`,
+            checkInDate: item.startDate || item.checkInDate,
+            checkOutDate: item.endDate || item.checkOutDate,
+            channel: (item.channel as Reservation['channel']) || 'Web',
+            status: item.status || 'CREADA',
+            amount: String(item.totalAmount ?? item.amount ?? 0),
+          };
+        });
         setReservations(mapped);
       }
     } catch (error) {
@@ -75,10 +84,17 @@ export default function Reservations() {
     fetchReservations();
   }, []);
 
-  const handleUpdateStatus = (id: string, nextStatus: Reservation['status']) => {
-    setReservations((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
-    );
+  // Sincronizar actualización de estado con el backend
+  const handleUpdateStatus = async (id: string, nextStatus: Reservation['status']) => {
+    try {
+      await updateReservationStatus(id, nextStatus);
+      setReservations((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
+      );
+    } catch (error) {
+      console.error('Error al actualizar estado en el servidor:', error);
+      alert('Error de conexión al actualizar el estado de la reserva.');
+    }
   };
 
   const handleCreateReservation = async (e: React.FormEvent) => {
@@ -100,28 +116,28 @@ export default function Reservations() {
       return;
     }
 
-    // 1. Armar el payload exacto para Spring Boot (ReservationRequest DTO)
+    // Payload directo garantizando unitId como integer
     const payload: ReservationRequest = {
-      unitId: UNIT_MAPPING[formData.unitName] || 1,
-      guestId: formData.guestName,
+      unitId: formData.unitId,
+      guestName: formData.guestName,
+      guestEmail: formData.guestEmail,
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
       totalAmount: numericAmount,
-      guestName: '',
-      channel: formData.channel
+      channel: formData.channel,
     };
 
     try {
-      // 2. Enviar POST al backend
       const backendResponse = await createReservation(payload);
+      const selectedUnit = AVAILABLE_UNITS.find((u) => u.id === formData.unitId);
 
-      // 3. Crear item para la UI con el ID o código devuelto
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const newReservation: Reservation = {
         id: String(backendResponse?.id || Date.now()),
         code: backendResponse?.code || `R-2026-${randomNum}`,
         guestName: formData.guestName,
-        unitName: formData.unitName,
+        guestEmail: formData.guestEmail,
+        unitName: selectedUnit ? selectedUnit.name : `Unidad #${formData.unitId}`,
         checkInDate: formData.checkInDate,
         checkOutDate: formData.checkOutDate,
         channel: formData.channel,
@@ -132,11 +148,11 @@ export default function Reservations() {
       setReservations((prev) => [newReservation, ...prev]);
       setIsModalOpen(false);
 
-      // Resetear formulario
+      // Limpiar el formulario reseteando al unitId inicial
       setFormData({
         guestName: fullName || '',
         guestEmail: '',
-        unitName: 'Cabaña Bosque Nativo #4',
+        unitId: 1,
         checkInDate: '',
         checkOutDate: '',
         channel: 'Web',
@@ -250,7 +266,7 @@ export default function Reservations() {
           </div>
         </div>
 
-        {/* Tabla */}
+        {/* Tabla de Reservas */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -307,7 +323,6 @@ export default function Reservations() {
                               </button>
                             )}
 
-                            {/* 2. Check-In: Visible tanto en CREADA como en CONFIRMADA, pero bloqueado en CREADA */}
                             {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
                               <button
                                 onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
@@ -385,14 +400,15 @@ export default function Reservations() {
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Unidad / Habitación</label>
                 <select
-                  value={formData.unitName}
-                  onChange={(e) => setFormData({ ...formData, unitName: e.target.value })}
+                  value={formData.unitId}
+                  onChange={(e) => setFormData({ ...formData, unitId: Number(e.target.value) })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                 >
-                  <option value="Cabaña Bosque Nativo #4">Cabaña Bosque Nativo #4 (Pucón)</option>
-                  <option value="Habitación Vista Volcán #102">Habitación Vista Volcán #102 (Puerto Varas)</option>
-                  <option value="Lodge Termas del Valle #1">Lodge Termas del Valle #1 (Curacautín)</option>
-                  <option value="Habitación Estándar #08">Habitación Estándar #08 (San Pedro)</option>
+                  {AVAILABLE_UNITS.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name} ({unit.location})
+                    </option>
+                  ))}
                 </select>
               </div>
 
