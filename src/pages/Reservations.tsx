@@ -5,7 +5,8 @@ import {
   createReservation, 
   getReservations, 
   updateReservationStatus,
-  type ReservationRequest 
+  type ReservationRequest,
+  type ReservationResponse
 } from '../services/reservationService';
 
 export interface Reservation {
@@ -55,8 +56,9 @@ export default function Reservations() {
     try {
       setLoading(true);
       const data = await getReservations();
-      if (Array.isArray(data) && data.length > 0) {
-        const mapped: Reservation[] = data.map((item: any) => {
+      
+      if (Array.isArray(data)) {
+        const mapped: Reservation[] = data.map((item: ReservationResponse) => {
           const matchedUnit = AVAILABLE_UNITS.find((u) => u.id === Number(item.unitId));
           return {
             id: String(item.id || item.code || Date.now()),
@@ -64,11 +66,11 @@ export default function Reservations() {
             guestName: item.guestName || item.guestId || 'Huésped',
             guestEmail: item.guestEmail || 'sin-email@dominio.com',
             unitName: item.unitName || matchedUnit?.name || `Unidad #${item.unitId}`,
-            checkInDate: item.startDate || item.checkInDate,
-            checkOutDate: item.endDate || item.checkOutDate,
+            checkInDate: item.startDate,
+            checkOutDate: item.endDate,
             channel: (item.channel as Reservation['channel']) || 'Web',
             status: item.status || 'CREADA',
-            amount: String(item.totalAmount ?? item.amount ?? 0),
+            amount: String(item.totalAmount ?? 0),
           };
         });
         setReservations(mapped);

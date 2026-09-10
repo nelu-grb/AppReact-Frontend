@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useUserRole } from '../hooks/useUserRole';
 
 export type PropertyType = 'Hostal' | 'Cabaña' | 'Lodge';
 
@@ -15,80 +17,20 @@ export interface Property {
 }
 
 const INITIAL_PROPERTIES: Property[] = [
-  {
-    id: '1',
-    code: 'P01',
-    name: 'El Roble',
-    location: 'Santiago Centro',
-    region: 'Región RM',
-    type: 'Hostal',
-    totalRooms: 18,
-    occupiedRooms: 14,
-    cleaningRooms: 3,
-  },
-  {
-    id: '2',
-    code: 'P02',
-    name: 'Cerro Azul',
-    location: 'Valparaíso',
-    region: 'Región V',
-    type: 'Hostal',
-    totalRooms: 12,
-    occupiedRooms: 10,
-    cleaningRooms: 2,
-  },
-  {
-    id: '3',
-    code: 'P03',
-    name: 'Lastarria',
-    location: 'Santiago',
-    region: 'Región RM',
-    type: 'Hostal',
-    totalRooms: 8,
-    occupiedRooms: 6,
-    cleaningRooms: 1,
-  },
-  {
-    id: '4',
-    code: 'P04',
-    name: 'El Arrayán',
-    location: 'Santiago',
-    region: 'Región RM',
-    type: 'Hostal',
-    totalRooms: 10,
-    occupiedRooms: 7,
-    cleaningRooms: 0,
-  },
-  {
-    id: '5',
-    code: 'P05',
-    name: 'Los Boldos',
-    location: 'Pucón',
-    region: 'Región IX',
-    type: 'Cabaña',
-    totalRooms: 6,
-    occupiedRooms: 6,
-    cleaningRooms: 1,
-  },
-  {
-    id: '6',
-    code: 'P06',
-    name: 'Lago Llanquihue',
-    location: 'Puerto Varas',
-    region: 'Región X',
-    type: 'Cabaña',
-    totalRooms: 8,
-    occupiedRooms: 5,
-    cleaningRooms: 2,
-  },
+  { id: '1', code: 'P01', name: 'El Roble', location: 'Santiago Centro', region: 'Región RM', type: 'Hostal', totalRooms: 18, occupiedRooms: 14, cleaningRooms: 3 },
+  { id: '2', code: 'P02', name: 'Cerro Azul', location: 'Valparaíso', region: 'Región V', type: 'Hostal', totalRooms: 12, occupiedRooms: 10, cleaningRooms: 2 },
+  { id: '3', code: 'P03', name: 'Lastarria', location: 'Santiago', region: 'Región RM', type: 'Hostal', totalRooms: 8, occupiedRooms: 6, cleaningRooms: 1 },
+  { id: '4', code: 'P04', name: 'El Arrayán', location: 'Santiago', region: 'Región RM', type: 'Hostal', totalRooms: 10, occupiedRooms: 7, cleaningRooms: 0 },
+  { id: '5', code: 'P05', name: 'Los Boldos', location: 'Pucón', region: 'Región IX', type: 'Cabaña', totalRooms: 6, occupiedRooms: 6, cleaningRooms: 1 },
+  { id: '6', code: 'P06', name: 'Lago Llanquihue', location: 'Puerto Varas', region: 'Región X', type: 'Cabaña', totalRooms: 8, occupiedRooms: 5, cleaningRooms: 2 },
 ];
 
 export default function Catalog() {
+  const { isAdmin, isHuesped } = useUserRole();
   const [properties, setProperties] = useState<Property[]>(INITIAL_PROPERTIES);
   const [selectedType, setSelectedType] = useState<string>('Todos');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Formulario
   const [formData, setFormData] = useState({
     name: '',
     location: '',
@@ -99,13 +41,11 @@ export default function Catalog() {
     cleaningRooms: 0,
   });
 
-  // Filtrado reactivo de tarjetas
   const filteredProperties = properties.filter((prop) => {
     if (selectedType === 'Todos') return true;
     return prop.type === selectedType;
   });
 
-  // Métricas totales de la barra lateral
   const totalPropertiesCount = properties.length;
   const totalRoomsCount = properties.reduce((acc, curr) => acc + curr.totalRooms, 0);
   const totalOccupiedCount = properties.reduce((acc, curr) => acc + curr.occupiedRooms, 0);
@@ -150,40 +90,36 @@ export default function Catalog() {
   return (
     <div className="min-h-screen bg-[#F4F6F6] flex flex-col font-sans">
       <div className="flex-1 flex flex-col md:flex-row">
-        {/* Barra lateral izquierda */}
+        {/* Barra lateral */}
         <aside className="w-full md:w-56 bg-[#F4EFEA]/80 p-6 flex flex-col justify-between shrink-0 border-r border-[#E5DDD5]">
           <div className="space-y-6">
             <div>
               <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-3">
-                Tipo
+                Tipo de unidad
               </span>
               <div className="flex flex-col space-y-1">
-                {typesList.map((type) => {
-                  const isSelected = selectedType === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setSelectedType(type)}
-                      className={`text-left px-3.5 py-2 rounded-lg text-sm font-semibold transition-all ${
-                        isSelected
-                          ? 'bg-[#CB6D51] text-white shadow-xs'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-[#EAE2D9]'
-                      }`}
-                    >
-                      {type}
-                    </button>
-                  );
-                })}
+                {typesList.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setSelectedType(type)}
+                    className={`text-left px-3.5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      selectedType === type
+                        ? 'bg-[#CB6D51] text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-[#EAE2D9]'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
             </div>
 
             <hr className="border-[#E2D8CE]" />
 
-            {/* Red Total */}
             <div>
               <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-3">
-                Red Total
+                Consolidado Red
               </span>
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between text-gray-700">
@@ -207,19 +143,22 @@ export default function Catalog() {
         <main className="flex-1 p-6 md:p-8 space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-              Catálogo de propiedades
+              Catálogo de Unidades y Propiedades
             </h1>
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(true)}
-              className="bg-[#CB6D51] hover:bg-[#b85e44] text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
-            >
-              <span>+</span>
-              <span>Agregar propiedad</span>
-            </button>
+            
+            {/* Solo el Administrador puede crear nuevas propiedades */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(true)}
+                className="bg-[#CB6D51] hover:bg-[#b85e44] text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                <span>+</span>
+                <span>Agregar propiedad</span>
+              </button>
+            )}
           </div>
 
-          {/* Tarjetas */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredProperties.map((prop) => {
               const occupancyRate =
@@ -265,15 +204,27 @@ export default function Catalog() {
                       <span>{prop.occupiedRooms} / {prop.totalRooms} hab.</span>
                       {prop.cleaningRooms > 0 && (
                         <span className="text-[#CB6D51] font-medium flex items-center gap-1">
-                          ↻ {prop.cleaningRooms} limpieza
+                          ↻ {prop.cleaningRooms} en limpieza
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="border-t border-gray-100 pt-3 mt-4 flex justify-between items-center text-[11px] text-gray-400 font-mono">
-                    <span>{prop.code}</span>
-                    <span className="font-sans">{prop.region}</span>
+                  {/* Acción según el rol */}
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex flex-col gap-2">
+                    {isHuesped && !isFull && (
+                      <Link
+                        to={`/reservations?property=${prop.code}`}
+                        className="w-full text-center bg-[#1A423B] hover:bg-[#13332d] text-white text-xs font-semibold py-2 rounded-lg transition-colors"
+                      >
+                        Reservar Unidad
+                      </Link>
+                    )}
+
+                    <div className="flex justify-between items-center text-[11px] text-gray-400 font-mono">
+                      <span>CÓD: {prop.code}</span>
+                      <span className="font-sans">{prop.region}</span>
+                    </div>
                   </div>
                 </div>
               );
@@ -288,8 +239,8 @@ export default function Catalog() {
         </main>
       </div>
 
-      {/* Modal para crear propiedad */}
-      {isModalOpen && (
+      {/* Modal restringido al Admin */}
+      {isModalOpen && isAdmin && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-100">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Agregar Nueva Propiedad</h2>
@@ -299,7 +250,7 @@ export default function Catalog() {
                 <input
                   type="text"
                   required
-                  placeholder="Ej. Bosque Andino"
+                  placeholder="Ej. Cabaña Bosque Nativo"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"

@@ -41,6 +41,7 @@ apiClient.interceptors.request.use(
           await msalInstance.acquireTokenRedirect({
             scopes: API_CONFIG.scopes,
           });
+          return Promise.reject(new Error('Se requiere interacción para adquirir el token. Redirigiendo a login...'));
         } else {
           console.error('Error al adquirir token con MSAL:', error);
         }
@@ -62,12 +63,13 @@ apiClient.interceptors.response.use(
       console.warn('Sesión expirada o token no autorizado (401). Redirigiendo a login...');
       // Limpia sesión activa y redirige
       await msalInstance.logoutRedirect({
-        postLogoutRedirectUri: '/login',
-      });
-    }
+      postLogoutRedirectUri: `${window.location.origin}/login`, // Usa la URL absoluta dinámica 
+    });
+    
+  }
 
     if (status === 403) {
-      console.error('Acceso denegado (403): Permisos insuficientes para este recurso.');
+      console.warn('Acceso denegado (403): Permisos insuficientes para este recurso.');
       // Opcional: Redirigir al dashboard si intenta acceder a un endpoint fuera de su rol
       window.location.href = '/dashboard';
     }

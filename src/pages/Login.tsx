@@ -8,7 +8,7 @@ export default function Login() {
     instance.loginRedirect(loginRequest).catch((error) => {
       console.error("Error en la autenticación:", error);
     });
-  }; // <-- FALTABA ESTE CIERRE
+  }; 
 
   return (
     <div className="min-h-screen bg-[#F0F4F4] flex items-center justify-center p-4 font-sans">
