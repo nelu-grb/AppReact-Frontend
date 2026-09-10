@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
+import { AsyncStateHandler } from '../utils/AsyncStateHandler';
+import { parseApiError } from '../utils/errorHandler';
 import { 
   createReservation, 
   getReservations, 
@@ -36,6 +38,7 @@ export default function Reservations() {
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,7 +47,7 @@ export default function Reservations() {
   const [formData, setFormData] = useState({
     guestName: fullName || '',
     guestEmail: '',
-    unitId: 1, // Se almacena directamente el ID numérico
+    unitId: 1,
     checkInDate: '',
     checkOutDate: '',
     channel: 'Web' as Reservation['channel'],
@@ -55,6 +58,7 @@ export default function Reservations() {
   const fetchReservations = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await getReservations();
       
       if (Array.isArray(data)) {
@@ -75,8 +79,8 @@ export default function Reservations() {
         });
         setReservations(mapped);
       }
-    } catch (error) {
-      console.warn('Backend aún sin datos o error de conexión, manteniendo vista local:', error);
+    } catch (err) {
+      setError(parseApiError(err));
     } finally {
       setLoading(false);
     }
@@ -93,9 +97,8 @@ export default function Reservations() {
       setReservations((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
       );
-    } catch (error) {
-      console.error('Error al actualizar estado en el servidor:', error);
-      alert('Error de conexión al actualizar el estado de la reserva.');
+    } catch (err) {
+      alert(parseApiError(err));
     }
   };
 
@@ -118,7 +121,6 @@ export default function Reservations() {
       return;
     }
 
-    // Payload directo garantizando unitId como integer
     const payload: ReservationRequest = {
       unitId: formData.unitId,
       guestName: formData.guestName,
@@ -150,7 +152,6 @@ export default function Reservations() {
       setReservations((prev) => [newReservation, ...prev]);
       setIsModalOpen(false);
 
-      // Limpiar el formulario reseteando al unitId inicial
       setFormData({
         guestName: fullName || '',
         guestEmail: '',
@@ -162,9 +163,8 @@ export default function Reservations() {
       });
 
       alert('¡Reserva creada y guardada en base de datos con éxito!');
-    } catch (error) {
-      console.error('Error al guardar en el backend:', error);
-      alert('Error de conexión al guardar la reserva en el servidor.');
+    } catch (err) {
+      alert(parseApiError(err));
     }
   };
 
@@ -268,105 +268,107 @@ export default function Reservations() {
           </div>
         </div>
 
-        {/* Tabla de Reservas */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/70 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  <th className="px-6 py-3.5">Código / Huésped</th>
-                  <th className="px-6 py-3.5">Alojamiento</th>
-                  <th className="px-6 py-3.5">Fechas</th>
-                  <th className="px-6 py-3.5">Canal</th>
-                  <th className="px-6 py-3.5">Monto</th>
-                  <th className="px-6 py-3.5">Estado</th>
-                  {canManageStatus && <th className="px-6 py-3.5 text-right">Acciones Operador</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-sm">
-                {loading ? (
-                  <tr>
-                    <td colSpan={canManageStatus ? 7 : 6} className="px-6 py-8 text-center text-gray-400 text-sm">
-                      Cargando reservas desde la base de datos...
-                    </td>
+        {/* AsyncStateHandler envolviendo la vista de datos */}
+        <AsyncStateHandler
+          loading={loading}
+          error={error}
+          isEmpty={reservations.length === 0}
+          emptyMessage="No existen reservas registradas en el sistema."
+          onRetry={fetchReservations}
+        >
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50/70 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5">Código / Huésped</th>
+                    <th className="px-6 py-3.5">Alojamiento</th>
+                    <th className="px-6 py-3.5">Fechas</th>
+                    <th className="px-6 py-3.5">Canal</th>
+                    <th className="px-6 py-3.5">Monto</th>
+                    <th className="px-6 py-3.5">Estado</th>
+                    {canManageStatus && <th className="px-6 py-3.5 text-right">Acciones Operador</th>}
                   </tr>
-                ) : filteredReservations.length > 0 ? (
-                  filteredReservations.map((res) => (
-                    <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-gray-900">{res.guestName}</div>
-                        <div className="text-xs font-mono text-gray-500">{res.code}</div>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-gray-800">{res.unitName}</td>
-                      <td className="px-6 py-4 text-xs text-gray-600">
-                        <div><span className="font-semibold">In:</span> {res.checkInDate}</div>
-                        <div><span className="font-semibold">Out:</span> {res.checkOutDate}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-                          {res.channel}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-gray-900">{formatCLP(res.amount)}</td>
-                      <td className="px-6 py-4">
-                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded border ${getStatusBadge(res.status)}`}>
-                          {res.status}
-                        </span>
-                      </td>
-                      {canManageStatus && (
-                        <td className="px-6 py-4 text-right">
-                          <div className="inline-flex items-center gap-1.5 justify-end">
-                            {res.status === 'CREADA' && (
-                              <button
-                                onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
-                              >
-                                Confirmar
-                              </button>
-                            )}
-
-                            {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
-                              <button
-                                onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
-                                className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
-                              >
-                                Check-In
-                              </button>
-                            )}
-
-                            {res.status === 'EN_ESTADÍA' && (
-                              <button
-                                onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
-                                className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
-                              >
-                                Check-Out
-                              </button>
-                            )}
-
-                            {(res.status === 'CREADA' || res.status === 'CONFIRMADA') && (
-                              <button
-                                onClick={() => handleUpdateStatus(res.id, 'CANCELADA')}
-                                className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
-                              >
-                                Cancelar
-                              </button>
-                            )}
-                          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm">
+                  {filteredReservations.length > 0 ? (
+                    filteredReservations.map((res) => (
+                      <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-gray-900">{res.guestName}</div>
+                          <div className="text-xs font-mono text-gray-500">{res.code}</div>
                         </td>
-                      )}
+                        <td className="px-6 py-4 font-medium text-gray-800">{res.unitName}</td>
+                        <td className="px-6 py-4 text-xs text-gray-600">
+                          <div><span className="font-semibold">In:</span> {res.checkInDate}</div>
+                          <div><span className="font-semibold">Out:</span> {res.checkOutDate}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                            {res.channel}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-gray-900">{formatCLP(res.amount)}</td>
+                        <td className="px-6 py-4">
+                          <span className={`text-[11px] font-bold px-2.5 py-1 rounded border ${getStatusBadge(res.status)}`}>
+                            {res.status}
+                          </span>
+                        </td>
+                        {canManageStatus && (
+                          <td className="px-6 py-4 text-right">
+                            <div className="inline-flex items-center gap-1.5 justify-end">
+                              {res.status === 'CREADA' && (
+                                <button
+                                  onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                                >
+                                  Confirmar
+                                </button>
+                              )}
+
+                              {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
+                                <button
+                                  onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
+                                  className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                                >
+                                  Check-In
+                                </button>
+                              )}
+
+                              {res.status === 'EN_ESTADÍA' && (
+                                <button
+                                  onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
+                                  className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                                >
+                                  Check-Out
+                                </button>
+                              )}
+
+                              {(res.status === 'CREADA' || res.status === 'CONFIRMADA') && (
+                                <button
+                                  onClick={() => handleUpdateStatus(res.id, 'CANCELADA')}
+                                  className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={canManageStatus ? 7 : 6} className="px-6 py-8 text-center text-gray-400 text-sm">
+                        No se encontraron reservas con los filtros seleccionados.
+                      </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={canManageStatus ? 7 : 6} className="px-6 py-8 text-center text-gray-400 text-sm">
-                      No se encontraron reservas con los filtros seleccionados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </AsyncStateHandler>
       </main>
 
       {/* Modal Nueva Reserva */}
