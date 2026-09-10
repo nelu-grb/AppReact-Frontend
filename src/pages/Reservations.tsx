@@ -207,7 +207,7 @@ export default function Reservations() {
           </div>
           <button
             onClick={() => {
-              setFormData((prev) => ({ ...prev, guestName: fullName || '' }));
+              setFormData((prev: any) => ({ ...prev, guestName: fullName || '' }));
               setIsModalOpen(true);
             }}
             className="bg-[#CB6D51] hover:bg-[#b85e44] text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
