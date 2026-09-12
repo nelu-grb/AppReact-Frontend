@@ -1,6 +1,16 @@
+const baseURL = import.meta.env.VITE_API_BASE_URL?.trim();
+
+if (!baseURL) {
+  throw new Error('Falta configurar VITE_API_BASE_URL');
+}
+
+const apiScope = import.meta.env.VITE_API_SCOPE?.trim();
+
+if (!apiScope) {
+  throw new Error('Falta configurar VITE_API_SCOPE');
+}
+
 export const API_CONFIG = {
-  baseURL: 'https://hyfvjy63q3.execute-api.us-east-1.amazonaws.com',
-  scopes: [
-   'api://ed8a85ef-f2d4-48c5-a17e-b69abfc4694e/OT.create',
-  ],
+  baseURL: baseURL.replace(/\/+$/, ''), // Elimina cualquier barra inclinada al final
+  scopes: [apiScope],
 };

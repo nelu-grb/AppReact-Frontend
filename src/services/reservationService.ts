@@ -2,7 +2,7 @@ import apiClient from './apiClient';
 
 export interface ReservationRequest {
   guestId?: string;
-  guestName: string;
+  guestId: string;
   guestEmail: string;
   unitId: number; // Estricto como número para coincidir con el Long/Integer de Java
   startDate: string;
@@ -24,7 +24,7 @@ export interface ReservationResponse {
   id: number;
   code: string;
   guestId?: string;
-  guestName: string;
+  guestId: string;
   guestEmail: string;
   unitId: number;
   unitName?: string;
