@@ -5,17 +5,17 @@ export const API_CONFIG = {
 
 export const API_ENDPOINTS = {
   catalog: {
-    list: "/api/catalog",
-    detail: (id: string) => `/api/catalog/${id}`,
+    list: "/catalog",
+    detail: (id: string) => `/catalog/${id}`,
   },
   reservations: {
-    list: "/api/reservations",
-    create: "/api/reservations",
-    detail: (id: string) => `/api/reservations/${id}`,
-    update: (id: string) => `/api/reservations/${id}`,
-    delete: (id: string) => `/api/reservations/${id}`,
+    list: "/reservations",
+    create: "/reservations",
+    detail: (id: string) => `/reservations/${id}`,
+    update: (id: string) => `/reservations/${id}`,
+    delete: (id: string) => `/reservations/${id}`,
   },
   audit: {
-    list: "/api/audit",
+    list: "/audit",
   },
 };
