@@ -96,13 +96,12 @@ export default function Reservations() {
       
       if (Array.isArray(data)) {
         const mapped: Reservation[] = data.map((item: ReservationResponse) => {
-          const matchedUnit = availableUnits.find((u) => u.id === Number(item.unitId));
           return {
             id: String(item.id || item.code || Date.now()),
             code: item.code || `R-2026-${item.id || '000'}`,
             guestId: item.guestId || item.guestId || 'Huésped',
             guestEmail: item.guestEmail || 'sin-email@dominio.com',
-            unitName: item.unitName || matchedUnit?.name || `Unidad #${item.unitId}`,
+            unitName: item.unitName || `Unidad #${item.unitId}`,
             checkInDate: item.startDate,
             checkOutDate: item.endDate,
             channel: (item.channel as Reservation['channel']) || 'Web',
@@ -117,12 +116,15 @@ export default function Reservations() {
     } finally {
       setLoading(false);
     }
-  }, [availableUnits]);
+  }, []);
+
+  useEffect(() => {
+    loadCatalogUnits();
+  }, [loadCatalogUnits]);
 
   useEffect(() => {
     fetchReservations();
-    loadCatalogUnits();
-  }, [fetchReservations, loadCatalogUnits]);
+  }, [fetchReservations]);
 
   // Sincronizar actualización de estado con el backend
   const handleUpdateStatus = async (id: string, nextStatus: Reservation['status']) => {
