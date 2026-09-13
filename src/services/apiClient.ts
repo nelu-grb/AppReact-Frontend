@@ -66,12 +66,10 @@ apiClient.interceptors.response.use(
     if (status === 401) {
       console.warn('Sesión expirada o token no autorizado (401). Redirigiendo a login...');
       // Limpia sesión activa y redirige
-      await msalInstance.logoutRedirect({
-      postLogoutRedirectUri: `${window.location.origin}/login`, // Usa la URL absoluta dinámica 
-    });
-    
-  }
-
+      //await msalInstance.logoutRedirect({
+      //postLogoutRedirectUri: `${window.location.origin}/login`, // Usa la URL absoluta dinámica 
+        console.error('Fallo de conexión o autorización con el backend:', error);
+      }
     if (status === 403) {
       console.warn('Acceso denegado (403): Permisos insuficientes para este recurso.');
       // Opcional: Redirigir al dashboard si intenta acceder a un endpoint fuera de su rol
