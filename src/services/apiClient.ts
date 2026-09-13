@@ -32,6 +32,10 @@ apiClient.interceptors.request.use(
           account,
         });
 
+        console.log('SCOPES REQUESTED:', API_CONFIG.scopes);
+        console.log('SCOPES IN RESPONSE:', response.scopes);
+        console.log('FULL TOKEN:', response.accessToken);
+        
         // Inyecta el Bearer Token en la cabecera
         config.headers.set('Authorization', `Bearer ${response.accessToken}`);
         console.log(`[API Client] Token inyectado para ${account.username}: ${response.accessToken.substring(0, 10)}...`);
