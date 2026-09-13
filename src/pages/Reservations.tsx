@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
+import { getUnits } from '../services/catalogService';
 import { 
   createReservation, 
   getReservations, 
@@ -24,17 +26,13 @@ export interface Reservation {
   amount: string;
 }
 
-// Catálogo de unidades: Sin export para cumplir reglas de Fast Refresh de Vite
-const AVAILABLE_UNITS = [
-  { id: 1, name: 'Cabaña Bosque Nativo #4', location: 'Pucón' },
-  { id: 2, name: 'Habitación Vista Volcán #102', location: 'Puerto Varas' },
-  { id: 3, name: 'Lodge Termas del Valle #1', location: 'Curacautín' },
-  { id: 4, name: 'Habitación Estándar #08', location: 'San Pedro' },
-];
+type ReservationUnitOption = { id: number; name: string; location: string };
 
 export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista } = useUserRole();
+  const [searchParams] = useSearchParams();
   const canManageStatus = isAdmin || isRecepcionista;
+  const [availableUnits, setAvailableUnits] = useState<ReservationUnitOption[]>([]);
 
   // Estados globales de consulta
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -53,12 +51,41 @@ export default function Reservations() {
   const [formData, setFormData] = useState({
     guestId: fullName || '',
     guestEmail: '',
-    unitId: 1,
+    unitId: 0,
     checkInDate: '',
     checkOutDate: '',
     channel: 'Web' as Reservation['channel'],
     amount: '$120.000',
   });
+
+  const loadCatalogUnits = useCallback(async () => {
+    try {
+      const units = await getUnits();
+      const unitOptions = units.map((unit) => ({
+        id: unit.unitId,
+        name: unit.name,
+        location: unit.city,
+      }));
+
+      setAvailableUnits(unitOptions);
+
+      const unitIdFromUrl = Number(searchParams.get('unitId'));
+      if (unitOptions.length > 0) {
+        const preferredUnitId = Number.isFinite(unitIdFromUrl) && unitIdFromUrl > 0
+          ? unitIdFromUrl
+          : unitOptions[0].id;
+
+        setFormData((prev) => ({
+          ...prev,
+          unitId: unitOptions.some((u) => u.id === prev.unitId)
+            ? prev.unitId
+            : preferredUnitId,
+        }));
+      }
+    } catch (err) {
+      console.error('Error loading catalog units:', err);
+    }
+  }, [searchParams]);
 
   // Cargar reservas desde Spring Boot (envuelto en useCallback)
   const fetchReservations = useCallback(async () => {
@@ -69,7 +96,7 @@ export default function Reservations() {
       
       if (Array.isArray(data)) {
         const mapped: Reservation[] = data.map((item: ReservationResponse) => {
-          const matchedUnit = AVAILABLE_UNITS.find((u) => u.id === Number(item.unitId));
+          const matchedUnit = availableUnits.find((u) => u.id === Number(item.unitId));
           return {
             id: String(item.id || item.code || Date.now()),
             code: item.code || `R-2026-${item.id || '000'}`,
@@ -90,11 +117,12 @@ export default function Reservations() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [availableUnits]);
 
   useEffect(() => {
     fetchReservations();
-  }, [fetchReservations]);
+    loadCatalogUnits();
+  }, [fetchReservations, loadCatalogUnits]);
 
   // Sincronizar actualización de estado con el backend
   const handleUpdateStatus = async (id: string, nextStatus: Reservation['status']) => {
@@ -143,7 +171,7 @@ export default function Reservations() {
     try {
       setIsCreating(true);
       const backendResponse = await createReservation(payload);
-      const selectedUnit = AVAILABLE_UNITS.find((u) => u.id === formData.unitId);
+      const selectedUnit = availableUnits.find((u) => u.id === formData.unitId);
 
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const newReservation: Reservation = {
@@ -165,7 +193,7 @@ export default function Reservations() {
       setFormData({
         guestId: fullName || '',
         guestEmail: '',
-        unitId: 1,
+        unitId: availableUnits[0]?.id ?? 0,
         checkInDate: '',
         checkOutDate: '',
         channel: 'Web',
@@ -424,11 +452,15 @@ export default function Reservations() {
                   onChange={(e) => setFormData({ ...formData, unitId: Number(e.target.value) })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                 >
-                  {AVAILABLE_UNITS.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name} ({unit.location})
-                    </option>
-                  ))}
+                  {availableUnits.length > 0 ? (
+                    availableUnits.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name} ({unit.location})
+                      </option>
+                    ))
+                  ) : (
+                    <option value={0}>Cargando unidades...</option>
+                  )}
                 </select>
               </div>
 

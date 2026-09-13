@@ -5,8 +5,8 @@ export const API_CONFIG = {
 
 export const API_ENDPOINTS = {
   catalog: {
-    list: "/catalog",
-    detail: (id: string) => `/catalog/${id}`,
+    list: "/api/units",
+    detail: (id: string | number) => `/api/units/${id}`,
   },
   reservations: {
     list: "/reservations",
