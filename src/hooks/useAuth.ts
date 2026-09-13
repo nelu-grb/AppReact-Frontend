@@ -1,25 +1,22 @@
-// src/useAuth.ts
 import { useMsal, useIsAuthenticated } from '@azure/msal-react';
+import { loginRequest } from './authConfig';
 
 export const useAuth = () => {
   const { instance, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();
 
-  // login()
   const login = () => {
-    instance.loginRedirect().catch((error) => {
+    instance.loginRedirect(loginRequest).catch((error) => {
       console.error('Error al iniciar sesión:', error);
     });
   };
 
-  // logout()
   const logout = () => {
     instance.logoutRedirect().catch((error) => {
       console.error('Error al cerrar sesión:', error);
     });
   };
 
-  // isLoggedIn() y datos de la cuenta activa
   const user = accounts[0] || null;
 
   return {
