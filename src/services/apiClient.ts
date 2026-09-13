@@ -32,13 +32,8 @@ apiClient.interceptors.request.use(
           account,
         });
 
-        console.log('SCOPES REQUESTED:', API_CONFIG.scopes);
-        console.log('SCOPES IN RESPONSE:', response.scopes);
-        console.log('FULL TOKEN:', response.accessToken);
-        
         // Inyecta el Bearer Token en la cabecera
         config.headers.set('Authorization', `Bearer ${response.accessToken}`);
-        console.log(`[API Client] Token inyectado para ${account.username}: ${response.accessToken.substring(0, 10)}...`);
       } catch (error) {
         // Si el token expiró y no se puede renovar en silencio, requiere interacción
         if (error instanceof InteractionRequiredAuthError) {
@@ -48,8 +43,11 @@ apiClient.interceptors.request.use(
           return Promise.reject(new Error('Se requiere interacción para adquirir el token. Redirigiendo a login...'));
         } else {
           console.error('Error al adquirir token con MSAL:', error);
+          return Promise.reject(error);
         }
       }
+    } else {
+      return Promise.reject(new Error('No hay una cuenta autenticada para realizar la solicitud.'));
     }
 
     return config;
