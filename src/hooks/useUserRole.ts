@@ -37,6 +37,7 @@ export function useUserRole() {
   const { accounts, instance } = useMsal();
   const activeAccount = accounts[0];
   const [roles, setRoles] = useState<string[]>(() => extractRoles(activeAccount?.idTokenClaims as Record<string, unknown> | undefined));
+  const [rolesLoading, setRolesLoading] = useState(Boolean(activeAccount));
 
   useEffect(() => {
     let cancelled = false;
@@ -44,14 +45,12 @@ export function useUserRole() {
     const hydrateRoles = async () => {
       if (!activeAccount) {
         setRoles([]);
+        setRolesLoading(false);
         return;
       }
 
+      setRolesLoading(true);
       const claimsFromAccount = extractRoles(activeAccount.idTokenClaims as Record<string, unknown> | undefined);
-      if (claimsFromAccount.length > 0) {
-        setRoles(claimsFromAccount);
-        return;
-      }
 
       try {
         const tokenResponse = await instance.acquireTokenSilent({
@@ -61,13 +60,15 @@ export function useUserRole() {
 
         if (cancelled) return;
 
-        const payload = decodeJwtPayload(tokenResponse.idToken || tokenResponse.accessToken);
-        const refreshedRoles = extractRoles(payload);
-        setRoles(refreshedRoles);
+        const idTokenRoles = extractRoles(decodeJwtPayload(tokenResponse.idToken));
+        const accessTokenRoles = extractRoles(decodeJwtPayload(tokenResponse.accessToken));
+        setRoles([...new Set([...claimsFromAccount, ...idTokenRoles, ...accessTokenRoles])]);
       } catch {
         if (!cancelled) {
           setRoles(claimsFromAccount);
         }
+      } finally {
+        if (!cancelled) setRolesLoading(false);
       }
     };
 
@@ -109,6 +110,7 @@ export function useUserRole() {
     fullName,
     initials,
     roles,
+    rolesLoading,
     primaryRole,
     isAdmin,
     isRecepcionista,

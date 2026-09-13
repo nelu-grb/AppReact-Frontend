@@ -19,7 +19,7 @@ function ProtectedRoute({
 }) {
   const { inProgress, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();
-  const { hasAnyRole } = useUserRole();
+  const { hasAnyRole, rolesLoading } = useUserRole();
 
   if (inProgress !== InteractionStatus.None) {
     return null;
@@ -30,6 +30,10 @@ function ProtectedRoute({
   }
 
   if (accounts.length === 0) {
+    return null;
+  }
+
+  if (rolesLoading) {
     return null;
   }
 
