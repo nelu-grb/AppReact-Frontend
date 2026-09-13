@@ -15,7 +15,7 @@ const emptyForm = {
   type: 'HABITACION' as UnitType,
   rooms: 1,
   bathrooms: 1,
-  pricePerNight: 0,
+  pricePerNight: 1,
   maxOccupancy: 2,
   availability: true,
 };
@@ -94,8 +94,8 @@ export default function Catalog() {
   const handleSaveUnit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name.trim() || !formData.address.trim() || formData.rooms <= 0) {
-      alert('Completa nombre, dirección y habitaciones para guardar la unidad.');
+    if (!formData.name.trim() || !formData.address.trim() || formData.rooms <= 0 || formData.pricePerNight <= 0) {
+      alert('Completa nombre, dirección, habitaciones y un precio mayor que cero para guardar la unidad.');
       return;
     }
 
