@@ -29,6 +29,7 @@ interface ActivityLog {
   color: string;
 }
 
+
 export default function Dashboard() {
   const { fullName, isAdmin, isRecepcionista, isHuesped, isAuditor } = useUserRole();
   const [activeRange, setActiveRange] = useState<'hoy' | 'semana' | 'mes'>('hoy');

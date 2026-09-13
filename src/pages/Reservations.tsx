@@ -43,7 +43,7 @@ export default function Reservations() {
   const [updatingReservationId, setUpdatingReservationId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Estados de interfaz
+  // Estados de interfaz test
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
