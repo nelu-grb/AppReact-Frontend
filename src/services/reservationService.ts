@@ -36,12 +36,12 @@ export interface ReservationResponse {
 }
 
 export const getReservations = async (): Promise<ReservationResponse[]> => {
-  const res = await apiClient.get<ReservationResponse[]>('/api/reservations');
+  const res = await apiClient.get<ReservationResponse[]>('/reservations');
   return res.data;
 };
 
 export const createReservation = async (data: ReservationRequest): Promise<ReservationResponse> => {
-  const res = await apiClient.post<ReservationResponse>('/api/reservations', data);
+  const res = await apiClient.post<ReservationResponse>('/reservations', data);
   return res.data;
 };
 
@@ -49,6 +49,6 @@ export const updateReservationStatus = async (
   id: string | number, 
   status: ReservationStatus
 ): Promise<ReservationResponse> => {
-  const res = await apiClient.put<ReservationResponse>(`/api/reservations/${id}/status`, { status });
+  const res = await apiClient.put<ReservationResponse>(`/reservations/${id}/status`, { status });
   return res.data;
 };
