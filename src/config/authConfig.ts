@@ -9,7 +9,7 @@ export const msalConfig: Configuration = {
     clientId: String(import.meta.env.VITE_AZURE_CLIENT_ID).trim(),
     authority:
       import.meta.env.VITE_AZURE_AUTHORITY ||
-      'https://login.microsoftonline.com/common',
+      'https://login.microsoftonline.com/934f23a0-098f-4b94-81be-bc5360fd4eb4',
     redirectUri,
     postLogoutRedirectUri: `${window.location.origin}/login`,
   },
