@@ -1,44 +1,45 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { PublicClientApplication, EventType, type Configuration } from '@azure/msal-browser';
+import { PublicClientApplication, EventType, type AccountInfo } from '@azure/msal-browser';
 import { MsalProvider } from '@azure/msal-react';
 import App from './App';    
 import './index.css';
 
-//pruebaaa
-
-
-const msalConfig: Configuration = {
-  auth: {
-    clientId: import.meta.env.VITE_AZURE_CLIENT_ID ?? '',
-    authority: import.meta.env.VITE_AZURE_AUTHORITY ?? 'https://login.microsoftonline.com/common',
-    redirectUri: window.location.origin,
-    postLogoutRedirectUri: window.location.origin,
-  },
-  cache: {
-    cacheLocation: 'sessionStorage',
-  },
-};
+import { msalConfig } from './config/authConfig';
 
 export const msalInstance = new PublicClientApplication(msalConfig);
 
-// Inicializar MSAL antes de renderizar la aplicación
-msalInstance.initialize().then(() => {
-  // Manejo de la cuenta activa tras el inicio de sesión
+// Inicializar MSAL y procesar la redirección antes de renderizar
+msalInstance.initialize().then(async () => {
+  // 1. Escuchar eventos futuros de inicio de sesión
   msalInstance.addEventCallback((event) => {
     if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
-      const payload = event.payload as { account?: any };
+      const payload = event.payload as { account?: AccountInfo };
       if (payload.account) {
         msalInstance.setActiveAccount(payload.account);
       }
     }
   });
 
-  // Manejar el resultado de redirección si viene de un flujo redirect
-  msalInstance.handleRedirectPromise().catch((err) => {
+  // 2. Procesar el resultado de la redirección al volver de Microsoft
+  try {
+    const response = await msalInstance.handleRedirectPromise();
+    if (response?.account) {
+      msalInstance.setActiveAccount(response.account);
+    }
+  } catch (err) {
     console.error('Error procesando redirección de MSAL:', err);
-  });
+  }
 
+  // 3. Mantener la sesión activa si el usuario recarga la página
+  if (!msalInstance.getActiveAccount()) {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      msalInstance.setActiveAccount(accounts[0]);
+    }
+  }
+
+  // 4. Montar la aplicación una vez asegurado el estado
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>

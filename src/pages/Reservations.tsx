@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
@@ -14,7 +14,7 @@ import {
 export interface Reservation {
   id: string;
   code: string;
-  guestName: string;
+  guestId: string;
   guestEmail: string;
   unitName: string;
   checkInDate: string;
@@ -24,8 +24,8 @@ export interface Reservation {
   amount: string;
 }
 
-// Catálogo de unidades: Única fuente de verdad en el cliente
-export const AVAILABLE_UNITS = [
+// Catálogo de unidades: Sin export para cumplir reglas de Fast Refresh de Vite
+const AVAILABLE_UNITS = [
   { id: 1, name: 'Cabaña Bosque Nativo #4', location: 'Pucón' },
   { id: 2, name: 'Habitación Vista Volcán #102', location: 'Puerto Varas' },
   { id: 3, name: 'Lodge Termas del Valle #1', location: 'Curacautín' },
@@ -36,16 +36,22 @@ export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista } = useUserRole();
   const canManageStatus = isAdmin || isRecepcionista;
 
+  // Estados globales de consulta
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Estados de mutación independientes (UX)
+  const [updatingReservationId, setUpdatingReservationId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Estados de interfaz
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    guestName: fullName || '',
+    guestId: fullName || '',
     guestEmail: '',
     unitId: 1,
     checkInDate: '',
@@ -54,8 +60,8 @@ export default function Reservations() {
     amount: '$120.000',
   });
 
-  // Cargar reservas desde Spring Boot
-  const fetchReservations = async () => {
+  // Cargar reservas desde Spring Boot (envuelto en useCallback)
+  const fetchReservations = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -67,7 +73,7 @@ export default function Reservations() {
           return {
             id: String(item.id || item.code || Date.now()),
             code: item.code || `R-2026-${item.id || '000'}`,
-            guestName: item.guestName || item.guestId || 'Huésped',
+            guestId: item.guestId || item.guestId || 'Huésped',
             guestEmail: item.guestEmail || 'sin-email@dominio.com',
             unitName: item.unitName || matchedUnit?.name || `Unidad #${item.unitId}`,
             checkInDate: item.startDate,
@@ -84,28 +90,31 @@ export default function Reservations() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchReservations();
-  }, []);
+  }, [fetchReservations]);
 
   // Sincronizar actualización de estado con el backend
   const handleUpdateStatus = async (id: string, nextStatus: Reservation['status']) => {
     try {
+      setUpdatingReservationId(id);
       await updateReservationStatus(id, nextStatus);
       setReservations((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
       );
     } catch (err) {
       alert(parseApiError(err));
+    } finally {
+      setUpdatingReservationId(null);
     }
   };
 
   const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.guestName || !formData.guestEmail || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
+    if (!formData.guestId || !formData.guestEmail || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
       alert('Por favor completa todos los campos requeridos.');
       return;
     }
@@ -123,7 +132,7 @@ export default function Reservations() {
 
     const payload: ReservationRequest = {
       unitId: formData.unitId,
-      guestName: formData.guestName,
+      guestId: formData.guestId,
       guestEmail: formData.guestEmail,
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
@@ -132,6 +141,7 @@ export default function Reservations() {
     };
 
     try {
+      setIsCreating(true);
       const backendResponse = await createReservation(payload);
       const selectedUnit = AVAILABLE_UNITS.find((u) => u.id === formData.unitId);
 
@@ -139,7 +149,7 @@ export default function Reservations() {
       const newReservation: Reservation = {
         id: String(backendResponse?.id || Date.now()),
         code: backendResponse?.code || `R-2026-${randomNum}`,
-        guestName: formData.guestName,
+        guestId: formData.guestId,
         guestEmail: formData.guestEmail,
         unitName: selectedUnit ? selectedUnit.name : `Unidad #${formData.unitId}`,
         checkInDate: formData.checkInDate,
@@ -153,7 +163,7 @@ export default function Reservations() {
       setIsModalOpen(false);
 
       setFormData({
-        guestName: fullName || '',
+        guestId: fullName || '',
         guestEmail: '',
         unitId: 1,
         checkInDate: '',
@@ -165,6 +175,8 @@ export default function Reservations() {
       alert('¡Reserva creada y guardada en base de datos con éxito!');
     } catch (err) {
       alert(parseApiError(err));
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -172,7 +184,7 @@ export default function Reservations() {
     const matchesStatus = statusFilter === 'ALL' || res.status === statusFilter;
     const matchesChannel = channelFilter === 'ALL' || res.channel === channelFilter;
     const matchesSearch =
-      res.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      res.guestId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       res.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       res.unitName.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesChannel && matchesSearch;
@@ -209,7 +221,7 @@ export default function Reservations() {
           </div>
           <button
             onClick={() => {
-              setFormData((prev: any) => ({ ...prev, guestName: fullName || '' }));
+              setFormData((prev) => ({ ...prev, guestId: fullName || '' }));
               setIsModalOpen(true);
             }}
             className="bg-[#CB6D51] hover:bg-[#b85e44] text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
@@ -295,7 +307,7 @@ export default function Reservations() {
                     filteredReservations.map((res) => (
                       <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-900">{res.guestName}</div>
+                          <div className="font-semibold text-gray-900">{res.guestId}</div>
                           <div className="text-xs font-mono text-gray-500">{res.code}</div>
                         </td>
                         <td className="px-6 py-4 font-medium text-gray-800">{res.unitName}</td>
@@ -316,43 +328,47 @@ export default function Reservations() {
                         </td>
                         {canManageStatus && (
                           <td className="px-6 py-4 text-right">
-                            <div className="inline-flex items-center gap-1.5 justify-end">
-                              {res.status === 'CREADA' && (
-                                <button
-                                  onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
-                                >
-                                  Confirmar
-                                </button>
-                              )}
+                            {updatingReservationId === res.id ? (
+                              <span className="text-xs text-[#CB6D51] font-semibold animate-pulse mr-2">Actualizando...</span>
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5 justify-end">
+                                {res.status === 'CREADA' && (
+                                  <button
+                                    onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                                  >
+                                    Confirmar
+                                  </button>
+                                )}
 
-                              {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
-                                <button
-                                  onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
-                                  className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
-                                >
-                                  Check-In
-                                </button>
-                              )}
+                                {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
+                                  <button
+                                    onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
+                                    className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                                  >
+                                    Check-In
+                                  </button>
+                                )}
 
-                              {res.status === 'EN_ESTADÍA' && (
-                                <button
-                                  onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
-                                  className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
-                                >
-                                  Check-Out
-                                </button>
-                              )}
+                                {res.status === 'EN_ESTADÍA' && (
+                                  <button
+                                    onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
+                                    className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
+                                  >
+                                    Check-Out
+                                  </button>
+                                )}
 
-                              {(res.status === 'CREADA' || res.status === 'CONFIRMADA') && (
-                                <button
-                                  onClick={() => handleUpdateStatus(res.id, 'CANCELADA')}
-                                  className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
-                                >
-                                  Cancelar
-                                </button>
-                              )}
-                            </div>
+                                {(res.status === 'CREADA' || res.status === 'CONFIRMADA') && (
+                                  <button
+                                    onClick={() => handleUpdateStatus(res.id, 'CANCELADA')}
+                                    className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
+                                  >
+                                    Cancelar
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -382,8 +398,8 @@ export default function Reservations() {
                 <input
                   type="text"
                   required
-                  value={formData.guestName}
-                  onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
+                  value={formData.guestId}
+                  onChange={(e) => setFormData({ ...formData, guestId: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                   placeholder="Ej. Juan Pérez"
                 />
@@ -469,15 +485,17 @@ export default function Reservations() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  disabled={isCreating}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium text-white bg-[#CB6D51] hover:bg-[#b85e44] rounded-lg shadow-sm transition-colors"
+                  disabled={isCreating}
+                  className="px-4 py-2 text-sm font-medium text-white bg-[#CB6D51] hover:bg-[#b85e44] rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Crear Reserva
+                  {isCreating ? 'Guardando...' : 'Crear Reserva'}
                 </button>
               </div>
             </form>
