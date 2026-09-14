@@ -4,7 +4,6 @@ import { PublicClientApplication, EventType, type AccountInfo } from '@azure/msa
 import { MsalProvider } from '@azure/msal-react';
 import App from './App';    
 import './index.css';
-
 import { msalConfig } from './config/authConfig';
 
 export const msalInstance = new PublicClientApplication(msalConfig);

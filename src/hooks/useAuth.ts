@@ -1,6 +1,7 @@
 // src/useAuth.ts
 import { useMsal, useIsAuthenticated } from '@azure/msal-react';
 
+// Custom hook para manejar la autenticación con MSAL 
 export const useAuth = () => {
   const { instance, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();

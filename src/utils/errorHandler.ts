@@ -1,5 +1,6 @@
 import { AxiosError } from 'axios';
 
+// Función para parsear errores de la API y retornar mensajes amigables para el usuario
 export const parseApiError = (error: unknown): string => {
   if (error instanceof AxiosError) {
     if (!error.response) {

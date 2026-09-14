@@ -1,5 +1,6 @@
 import React from 'react';
 
+// Componente para manejar los estados asíncronos de carga, error y vacío en la UI
 interface AsyncStateHandlerProps {
   loading: boolean;
   error: string | null;
@@ -9,6 +10,7 @@ interface AsyncStateHandlerProps {
   children: React.ReactNode;
 }
 
+// Componente funcional que renderiza diferentes estados según las props recibidas
 export const AsyncStateHandler: React.FC<AsyncStateHandlerProps> = ({
   loading,
   error,

@@ -1,9 +1,14 @@
 import { useMsal } from '@azure/msal-react';
 
+
+// Custom hook para obtener el rol del usuario y su información
+
 export function useUserRole() {
+  // Obtener la cuenta activa y sus claims
   const { accounts } = useMsal();
   const activeAccount = accounts[0];
 
+  // Extraer los roles y el nombre completo del usuario desde los claims del token
   const idTokenClaims = activeAccount?.idTokenClaims as {
     roles?: string[];
     name?: string;
@@ -25,6 +30,7 @@ export function useUserRole() {
   const isHuesped = lowerRoles.includes('huesped') || lowerRoles.includes('huésped');
   const isAuditor = lowerRoles.includes('auditor');
 
+  // Determinar el rol principal del usuario según la jerarquía de roles
   const primaryRole =
     isAdmin ? 'ADMIN' :
     isRecepcionista ? 'RECEPCIONISTA' :
@@ -37,6 +43,7 @@ export function useUserRole() {
     return roles.some((r) => lowerAllowed.includes(r.toLowerCase()));
   };
 
+  // Retornar la información del usuario y sus roles
   return {
     fullName,
     initials,

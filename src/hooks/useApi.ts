@@ -1,5 +1,7 @@
 import apiClient from '../services/apiClient';
 
+// Custom hook para manejar las solicitudes HTTP a la API
+
 export function useApi() {
   return {
     get: <T>(url: string, config = {}) => apiClient.get<T>(url, config).then((res) => res.data),
