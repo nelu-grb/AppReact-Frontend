@@ -17,7 +17,9 @@ export default function Audit() {
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
-    return events.filter((event) => !term || [event.eventType, event.aggregateId, event.actor, event.payload].some((value) => value.toLowerCase().includes(term)));
+    return events
+      .filter((event) => !term || [event.eventType, event.aggregateId, event.actor, event.payload].some((value) => value.toLowerCase().includes(term)))
+      .sort((first, second) => new Date(second.timestamp).getTime() - new Date(first.timestamp).getTime());
   }, [events, search]);
 
   if (!isAdmin && !isAuditor) return <PageMessage text="No tienes permisos para consultar auditoría." />;
