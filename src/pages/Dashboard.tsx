@@ -1,317 +1,127 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useUserRole } from '../hooks/useUserRole';
+import { getUnits, type Unit } from '../services/catalogService';
+import { getReservations, type ReservationResponse } from '../services/reservationService';
+import { getReportKpis, type ReportKpis } from '../services/reportService';
+import { getAuditEvents, type AuditEvent } from '../services/auditService';
+import { parseApiError } from '../utils/errorHandler';
 
-interface ChartPoint {
-  time: string;
-  value: number;
-  isPeak?: boolean;
-}
-
-interface ChannelStat {
-  name: string;
-  count: number;
-  percent: string;
-}
-
-interface PropertyOccupancy {
-  name: string;
-  location: string;
-  percent: number;
-}
-
-interface ActivityLog {
-  user: string;
-  action: string;
-  res: string;
-  time: string;
-  prop: string;
-  color: string;
-}
-
+const formatDate = (value: string) => new Date(value).toLocaleString('es-CL');
 
 export default function Dashboard() {
   const { fullName, isAdmin, isRecepcionista, isHuesped, isAuditor } = useUserRole();
-  const [activeRange, setActiveRange] = useState<'hoy' | 'semana' | 'mes'>('hoy');
-  const [hoveredBar, setHoveredBar] = useState<ChartPoint | null>(null);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [reservations, setReservations] = useState<ReservationResponse[]>([]);
+  const [kpis, setKpis] = useState<ReportKpis | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const chartData: ChartPoint[] = [
-    { time: '08h', value: 40 },
-    { time: '09h', value: 65 },
-    { time: '10h', value: 45 },
-    { time: '11h', value: 55 },
-    { time: '12h', value: 70 },
-    { time: '13h', value: 65 },
-    { time: '14h', value: 85 },
-    { time: '15h', value: 75 },
-    { time: '16h', value: 100, isPeak: true },
-    { time: '17h', value: 60 },
-    { time: '18h', value: 45 },
-    { time: '19h', value: 30 },
-  ];
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        setLoading(true);
+        const [unitData, reservationData, kpiData, auditData] = await Promise.all([
+          getUnits(), getReservations(), getReportKpis(), getAuditEvents(),
+        ]);
+        setUnits(unitData);
+        setReservations(reservationData);
+        setKpis(kpiData);
+        setAuditEvents(auditData);
+      } catch (loadError) {
+        setError(parseApiError(loadError));
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboard();
+  }, []);
 
-  const channelData: ChannelStat[] = [
-    { name: 'Web', count: 14, percent: '70%' },
-    { name: 'Instagram', count: 7, percent: '35%' },
-    { name: 'WhatsApp', count: 6, percent: '30%' },
-    { name: 'Directo', count: 3, percent: '15%' },
-  ];
-
-  const propertiesData: PropertyOccupancy[] = [
-    { name: 'Los Boldos', location: 'Pucón', percent: 100 },
-    { name: 'Todos Los Santos', location: 'Petrohué', percent: 100 },
-    { name: 'Torres del Paine', location: 'Puerto Natales', percent: 93 },
-    { name: 'Atacama Lodge', location: 'San Pedro de Atacama', percent: 92 },
-    { name: 'Patagonia Sur', location: 'Puerto Natales', percent: 98 },
-  ];
-
-  const recentActivity: ActivityLog[] = [
-    { user: 'Carlos Núñez', action: 'realizó check-in', res: 'R-2026-0891', time: '08:02 a. m.', prop: 'Patagonia Sur', color: 'bg-[#CB6D51]' },
-    { user: 'Ana Beltrán', action: 'realizó check-in', res: 'R-2026-0892', time: '08:17 a. m.', prop: 'Torres del Paine', color: 'bg-[#CB6D51]' },
-    { user: 'Luis Pino', action: 'solicitó check-out', res: 'R-2026-0893', time: '09:05 a. m.', prop: 'El Roble', color: 'bg-[#EAB308]' },
-    { user: 'María José Lagos', action: 'confirmó reserva', res: 'R-2026-0894', time: '09:31 a. m.', prop: 'Atacama Lodge', color: 'bg-[#10B981]' },
-  ];
-
-  if (isHuesped) {
-    return (
-      <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-[#F4F6F6] space-y-6 font-sans">
-        <div className="bg-[#1A423B] rounded-2xl p-6 md:p-8 text-white shadow-sm relative overflow-hidden">
-          <div className="relative z-10">
-            <h1 className="text-2xl font-bold mb-2">¡Hola, {fullName || 'Huésped'}! </h1>
-            <p className="text-emerald-100 text-sm max-w-xl">
-              Bienvenido a tu panel de AndesStay. Gestiona tus estadías activas o explora nuevas propiedades disponibles para tus próximas vacaciones.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                to="/reservations"
-                className="bg-[#CB6D51] hover:bg-[#b85e44] text-white px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors shadow-xs"
-              >
-                Mis Reservas
-              </Link>
-              <Link
-                to="/catalog"
-                className="bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-lg font-semibold text-sm transition-colors border border-white/20"
-              >
-                Explorar Catálogo
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-xl border border-gray-200/90 shadow-2xs">
-            <h2 className="font-bold text-gray-800 text-sm mb-3">Próxima Estadía</h2>
-            <div className="p-4 bg-emerald-50/60 border border-emerald-100 rounded-lg">
-              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Reserva Confirmada</span>
-              <p className="font-semibold text-gray-900 text-sm mt-1">Cabaña Bosque Nativo #4 — Pucón</p>
-              <p className="text-xs text-gray-600 mt-1">Check-in listo para coordinar en recepción.</p>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-gray-200/90 shadow-2xs flex flex-col justify-between">
-            <div>
-              <h2 className="font-bold text-gray-800 text-sm mb-1">Soporte al Huésped</h2>
-              <p className="text-xs text-gray-500">¿Necesitas ayuda adicional con tus fechas o equipaje?</p>
-            </div>
-            <a
-              href="https://wa.me/56900000000"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-[#1A423B] hover:text-[#13332d] transition-colors"
-            >
-              Contactar con Recepción vía WhatsApp &rarr;
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const pendingReservations = reservations.filter((item) => item.status === 'CREADA').length;
+  const availableUnits = units.filter((unit) => unit.availability).length;
+  const occupancyPercent = units.length && kpis
+    ? Math.round((kpis.activeOccupancy / units.length) * 100)
+    : 0;
+  const statusData = useMemo(() => {
+    const counts = reservations.reduce<Record<string, number>>((result, reservation) => {
+      result[reservation.status] = (result[reservation.status] ?? 0) + 1;
+      return result;
+    }, {});
+    return Object.entries(counts);
+  }, [reservations]);
+  const hourlyData = useMemo(() => kpis
+    ? Object.entries(kpis.reservationsByHour).sort(([first], [second]) => first.localeCompare(second))
+    : [], [kpis]);
+  const maxHourlyCount = Math.max(...hourlyData.map(([, count]) => count), 1);
+  const recentEvents = auditEvents.slice().sort((first, second) =>
+    new Date(second.timestamp).getTime() - new Date(first.timestamp).getTime(),
+  ).slice(0, 5);
+  const roleLabel = isAdmin ? 'Admin' : isRecepcionista ? 'Recepcionista' : isAuditor ? 'Auditor' : 'Huésped';
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-[#F4F6F6] font-sans">
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-gray-900 tracking-tight">Panel de Control — {fullName}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {isAdmin && 'Vista Administrador: Consolidado general y rendimiento operacional de AndesStay.'}
-            {isRecepcionista && 'Vista Recepción: Gestión en tiempo real de entradas, salidas y limpieza.'}
-            {isAuditor && 'Vista Auditoría: Registro de actividad general e indicadores clave de ocupación.'}
-          </p>
+          <p className="text-xs text-gray-500 mt-0.5">Información disponible desde catálogo, reservas, reportes y auditoría.</p>
         </div>
-
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="bg-white border border-gray-200 rounded-lg p-1 flex text-xs font-medium">
-            {(['hoy', 'semana', 'mes'] as const).map((range) => (
-              <button
-                key={range}
-                type="button"
-                onClick={() => setActiveRange(range)}
-                className={`px-3 py-1 rounded-md capitalize transition-all ${
-                  activeRange === range
-                    ? 'bg-[#1A423B] text-white shadow-2xs font-semibold'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                {range}
-              </button>
-            ))}
-          </div>
-
-          <span className="text-xs font-bold px-3 py-1.5 bg-[#1A423B] text-white rounded-lg shadow-2xs">
-            Rol: {isAdmin ? 'Admin' : isRecepcionista ? 'Recepcionista' : 'Auditor'}
-          </span>
-        </div>
+        <span className="text-xs font-bold px-3 py-1.5 bg-[#1A423B] text-white rounded-lg shadow-2xs">Rol: {roleLabel}</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
-        <div className="bg-[#1A423B] rounded-xl p-5 shadow-2xs text-white flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-emerald-200 uppercase tracking-wider">Ocupación Red</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold tracking-tight">77%</span>
-          </div>
-          <p className="text-xs text-emerald-100/80">134 de 174 habitaciones ocupadas</p>
+      {loading && <p className="text-sm text-gray-500">Cargando datos del sistema...</p>}
+      {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
+
+      {!loading && !error && <>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+          <MetricCard label="Ocupación activa" value={`${occupancyPercent}%`} detail={`${kpis?.activeOccupancy ?? 0} estadías activas de ${units.length} unidades`} dark />
+          <MetricCard label="Unidades disponibles" value={String(availableUnits)} detail={`de ${units.length} unidades en catálogo`} />
+          <MetricCard label="Reservas creadas" value={String(reservations.length)} detail={`${pendingReservations} pendientes de confirmar`} />
+          <MetricCard label="Tiempo promedio" value={`${Math.round(kpis?.averageCycleTimeMinutes ?? 0)} min`} detail="ciclo promedio registrado por reportes" />
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-5 shadow-2xs flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Check-ins Activos</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-gray-900 tracking-tight">6</span>
-          </div>
-          <p className="text-xs text-gray-500">Huéspedes actualmente en tránsito</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <section className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs lg:col-span-2">
+            <h3 className="font-bold text-gray-900 text-sm">Reservas creadas por hora</h3>
+            <p className="text-xs text-gray-500 mb-6">Datos recibidos desde el servicio de reportes</p>
+            {hourlyData.length === 0 ? <EmptyState text="No hay eventos de reservas registrados." /> : <div className="h-44 flex items-end gap-2">
+              {hourlyData.map(([hour, count]) => <div key={hour} className="flex-1 flex flex-col items-center gap-2 min-w-0">
+                <span className="text-[10px] font-bold text-gray-700">{count}</span>
+                <div className="w-full bg-[#1A423B]/70 rounded-t-sm" style={{ height: `${Math.max((count / maxHourlyCount) * 100, 4)}%` }} />
+                <span className="text-[9px] text-gray-400 truncate w-full text-center">{new Date(hour).toLocaleTimeString('es-CL', { hour: '2-digit' })}</span>
+              </div>)}
+            </div>}
+          </section>
+
+          <section className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs">
+            <h3 className="font-bold text-gray-900 text-sm mb-1">Estado de reservas</h3>
+            <p className="text-xs text-gray-500 mb-6">Conteo real del servicio de reservas</p>
+            <div className="space-y-4">{statusData.length === 0 ? <EmptyState text="No hay reservas registradas." /> : statusData.map(([status, count]) => <div key={status} className="flex items-center justify-between text-xs"><span className="text-gray-600 font-medium">{status}</span><span className="font-bold text-gray-900">{count}</span></div>)}</div>
+          </section>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-5 shadow-2xs flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sin Confirmar</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-gray-900 tracking-tight">3</span>
-          </div>
-          <p className="text-xs text-gray-500">Pendientes de pago o revisión</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <section className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs lg:col-span-2">
+            <div className="flex justify-between items-center mb-5"><div><h3 className="font-bold text-gray-900 text-sm">Unidades del catálogo</h3><p className="text-xs text-gray-500">Disponibilidad reportada por catálogo</p></div><Link to="/catalog" className="text-xs font-semibold text-[#1A423B]">Ver catálogo</Link></div>
+            <div className="space-y-4">{units.length === 0 ? <EmptyState text="No hay unidades en catálogo." /> : units.slice(0, 6).map((unit) => <div key={unit.unitId} className="flex items-center text-xs"><div className="w-44 shrink-0"><p className="font-bold text-gray-900">{unit.name}</p><p className="text-[10px] text-gray-400">{unit.city}</p></div><div className="flex-1 mx-3 h-2 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${unit.availability ? 'bg-emerald-500' : 'bg-gray-400'}`} style={{ width: unit.availability ? '100%' : '20%' }} /></div><span className="text-[10px] font-bold text-gray-600">{unit.availability ? 'Disponible' : 'No disponible'}</span></div>)}</div>
+          </section>
+
+          <section className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs">
+            <h3 className="font-bold text-gray-900 text-sm mb-1">Actividad reciente</h3><p className="text-xs text-gray-500 mb-5">Eventos recibidos por auditoría</p>
+            {recentEvents.length === 0 ? <EmptyState text="No hay eventos auditados." /> : <ul className="space-y-3.5">{recentEvents.map((event) => <li key={event.id} className="flex gap-2.5 text-xs"><div className="w-2 h-2 rounded-full mt-1.5 shrink-0 bg-[#CB6D51]" /><div><p className="font-semibold text-gray-900">{event.eventType}</p><p className="text-[10px] text-gray-400 mt-0.5">{event.actor || 'Sin actor'} · {formatDate(event.timestamp)}</p></div></li>)}</ul>}
+          </section>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-5 shadow-2xs flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Housekeeping</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-gray-900 tracking-tight">25</span>
-          </div>
-          <p className="text-xs text-gray-500">Unidades en cola de mantenimiento</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs lg:col-span-2 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h3 className="font-bold text-gray-900 text-sm">Distribución de reservas por hora</h3>
-              <p className="text-xs text-gray-500">Monitoreo de la demanda en el periodo seleccionado</p>
-            </div>
-            <span className="bg-red-50 text-[#CB6D51] border border-red-100 text-[11px] px-2.5 py-1 rounded-md font-semibold">
-              Pico 16 h — 11 reservas
-            </span>
-          </div>
-
-          <div className="h-44 flex items-end justify-between gap-2 pt-4 relative">
-            {chartData.map((data, idx) => (
-              <div
-                key={idx}
-                className="flex flex-col items-center w-full group relative cursor-pointer"
-                onMouseEnter={() => setHoveredBar(data)}
-                onMouseLeave={() => setHoveredBar(null)}
-              >
-                <div
-                  className={`w-full rounded-t-sm transition-all duration-200 ${
-                    data.isPeak ? 'bg-[#CB6D51]' : 'bg-[#1A423B]/30 group-hover:bg-[#1A423B]'
-                  }`}
-                  style={{ height: `${data.value}%` }}
-                ></div>
-                <span className="text-[10px] text-gray-400 mt-2 font-mono">{data.time}</span>
-              </div>
-            ))}
-
-            {hoveredBar && (
-              <div className="absolute top-0 right-0 bg-gray-900 text-white text-[10px] px-2.5 py-1 rounded shadow-md pointer-events-none">
-                {hoveredBar.time}: <span className="font-bold">{hoveredBar.value}% capacidad</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs">
-          <h3 className="font-bold text-gray-900 text-sm mb-1">Origen de reservas</h3>
-          <p className="text-xs text-gray-500 mb-6">Desglose acumulado por canal de adquisición</p>
-          <div className="space-y-4">
-            {channelData.map((ch, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <span className="w-20 text-gray-600 font-medium">{ch.name}</span>
-                <div className="flex-1 mx-3 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#1A423B] rounded-full" style={{ width: ch.percent }}></div>
-                </div>
-                <span className="w-6 text-right font-bold text-gray-900">{ch.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs lg:col-span-2">
-          <div className="flex justify-between items-center mb-5">
-            <div>
-              <h3 className="font-bold text-gray-900 text-sm">Ocupación por propiedad</h3>
-              <p className="text-xs text-gray-500">Unidades de la red con mayor demanda</p>
-            </div>
-            <span className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">Sincronizado</span>
-          </div>
-
-          <div className="space-y-4">
-            {propertiesData.map((prop, idx) => (
-              <div key={idx} className="flex items-center text-xs">
-                <div className="w-44 shrink-0">
-                  <p className="font-bold text-gray-900">{prop.name}</p>
-                  <p className="text-[10px] text-gray-400">{prop.location}</p>
-                </div>
-                <div className="flex-1 mx-3 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#CB6D51] rounded-full" style={{ width: `${prop.percent}%` }}></div>
-                </div>
-                <span className="w-10 text-right font-extrabold text-[#CB6D51]">{prop.percent}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs flex flex-col justify-between">
-          <div>
-            <h3 className="font-bold text-gray-900 text-sm mb-1">Actividad reciente</h3>
-            <p className="text-xs text-gray-500 mb-5">Últimos eventos registrados en la plataforma</p>
-            <ul className="space-y-3.5">
-              {recentActivity.map((act, idx) => (
-                <li key={idx} className="flex gap-2.5 text-xs">
-                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${act.color}`}></div>
-                  <div>
-                    <p className="text-gray-800">
-                      <span className="font-semibold text-gray-900">{act.user}</span> {act.action}{' '}
-                      <span className="font-mono text-[11px] text-gray-600 font-semibold">{act.res}</span>
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      {act.time} · {act.prop}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {(isRecepcionista || isAdmin) && (
-            <div className="mt-5 pt-3 border-t border-gray-100">
-              <Link
-                to="/reservations"
-                className="block text-center text-xs font-semibold text-[#1A423B] hover:text-[#13332d] transition-colors"
-              >
-                Ver todas las reservas &rarr;
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
+        {(isRecepcionista || isAdmin || isHuesped) && <Link to="/reservations" className="inline-block mt-6 text-xs font-semibold text-[#1A423B]">Ver reservas →</Link>}
+      </>}
     </div>
   );
+}
+
+function MetricCard({ label, value, detail, dark = false }: { label: string; value: string; detail: string; dark?: boolean }) {
+  return <div className={`${dark ? 'bg-[#1A423B] text-white' : 'bg-white text-gray-900 border border-gray-200/90'} rounded-xl p-5 shadow-2xs`}><h3 className={`text-[10px] font-bold uppercase tracking-wider ${dark ? 'text-emerald-200' : 'text-gray-400'}`}>{label}</h3><div className="my-2"><span className="text-3xl font-extrabold tracking-tight">{value}</span></div><p className={`text-xs ${dark ? 'text-emerald-100/80' : 'text-gray-500'}`}>{detail}</p></div>;
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <p className="text-xs text-gray-400">{text}</p>;
 }
