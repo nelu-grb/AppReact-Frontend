@@ -167,7 +167,6 @@ export default function Reservations() {
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
       totalAmount: numericAmount,
-      channel: formData.channel,
     };
 
     try {

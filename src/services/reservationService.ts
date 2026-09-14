@@ -7,7 +7,6 @@ export interface ReservationRequest {
   unitId: number; // Estricto como número para coincidir con el Long/Integer de Java
   startDate: string;
   endDate: string;
-  channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
   totalAmount: number;
 }
 
