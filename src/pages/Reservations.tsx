@@ -581,3 +581,23 @@ export default function Reservations() {
     </div>
   );
 }
+
+function Pagination({ currentPage, totalPages, totalItems, onPageChange }: { currentPage: number; totalPages: number; totalItems: number; onPageChange: (page: number) => void }) {
+  const firstItem = (currentPage - 1) * PAGE_SIZE + 1;
+  const lastItem = Math.min(currentPage * PAGE_SIZE, totalItems);
+
+  return (
+    <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+      <span>Mostrando {firstItem}-{lastItem} de {totalItems}</span>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} className="rounded border border-gray-200 px-2.5 py-1 disabled:opacity-40">
+          Anterior
+        </button>
+        <span>Página {currentPage} de {totalPages}</span>
+        <button type="button" disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} className="rounded border border-gray-200 px-2.5 py-1 disabled:opacity-40">
+          Siguiente
+        </button>
+      </div>
+    </div>
+  );
+}
