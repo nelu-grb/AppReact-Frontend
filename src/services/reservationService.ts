@@ -14,7 +14,7 @@ export type ReservationStatus =
   | 'CREADA' 
   | 'CONFIRMADA' 
   | 'CHECKIN_PENDIENTE' 
-  | 'EN_ESTADÍA' 
+  | 'EN_ESTADIA'
   | 'CHECKOUT' 
   | 'CANCELADA';
 

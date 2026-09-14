@@ -22,7 +22,7 @@ export interface Reservation {
   checkInDate: string;
   checkOutDate: string;
   channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
-  status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADÍA' | 'CHECKOUT' | 'CANCELADA';
+  status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADIA' | 'CHECKOUT' | 'CANCELADA';
   amount: string;
 }
 
@@ -227,7 +227,7 @@ export default function Reservations() {
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'CHECKIN_PENDIENTE':
         return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'EN_ESTADÍA':
+      case 'EN_ESTADIA':
         return 'bg-[#1A423B]/10 text-[#1A423B] border-[#1A423B]/20 font-bold';
       case 'CHECKOUT':
         return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -286,7 +286,7 @@ export default function Reservations() {
                 <option value="CREADA">CREADA</option>
                 <option value="CONFIRMADA">CONFIRMADA</option>
                 <option value="CHECKIN_PENDIENTE">CHECKIN_PENDIENTE</option>
-                <option value="EN_ESTADÍA">EN_ESTADÍA</option>
+                <option value="EN_ESTADIA">EN_ESTADIA</option>
                 <option value="CHECKOUT">CHECKOUT</option>
                 <option value="CANCELADA">CANCELADA</option>
               </select>
@@ -372,14 +372,14 @@ export default function Reservations() {
 
                                 {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
                                   <button
-                                    onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
+                                    onClick={() => handleUpdateStatus(res.id, 'EN_ESTADIA')}
                                     className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
                                   >
                                     Check-In
                                   </button>
                                 )}
 
-                                {res.status === 'EN_ESTADÍA' && (
+                                {res.status === 'EN_ESTADIA' && (
                                   <button
                                     onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
                                     className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
