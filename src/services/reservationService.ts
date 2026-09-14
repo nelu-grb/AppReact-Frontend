@@ -51,3 +51,7 @@ export const updateReservationStatus = async (
   const res = await apiClient.put<ReservationResponse>(`/reservations/${id}/status`, { status });
   return res.data;
 };
+
+export const deleteReservation = async (id: string | number): Promise<void> => {
+  await apiClient.delete(`/reservations/${id}`);
+};

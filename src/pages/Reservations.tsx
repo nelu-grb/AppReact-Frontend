@@ -9,6 +9,7 @@ import {
   createReservation, 
   getReservations, 
   updateReservationStatus,
+  deleteReservation,
   type ReservationRequest,
   type ReservationResponse
 } from '../services/reservationService';
@@ -27,6 +28,7 @@ export interface Reservation {
 }
 
 type ReservationUnitOption = { id: number; name: string; location: string };
+const PAGE_SIZE = 10;
 
 export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista } = useUserRole();
@@ -47,6 +49,7 @@ export default function Reservations() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     guestId: fullName || '',
@@ -141,6 +144,20 @@ export default function Reservations() {
     }
   };
 
+  const handleDeleteReservation = async (id: string) => {
+    if (!window.confirm('¿Eliminar esta reserva cancelada de la vista operativa?')) return;
+
+    try {
+      setUpdatingReservationId(id);
+      await deleteReservation(id);
+      setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
+    } catch (err) {
+      alert(parseApiError(err));
+    } finally {
+      setUpdatingReservationId(null);
+    }
+  };
+
   const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -218,6 +235,15 @@ export default function Reservations() {
       res.unitName.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesChannel && matchesSearch;
   });
+  const totalPages = Math.max(1, Math.ceil(filteredReservations.length / PAGE_SIZE));
+  const paginatedReservations = filteredReservations.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, channelFilter, searchQuery]);
 
   const getStatusBadge = (status: Reservation['status']) => {
     switch (status) {
@@ -332,8 +358,8 @@ export default function Reservations() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
-                  {filteredReservations.length > 0 ? (
-                    filteredReservations.map((res) => (
+                  {paginatedReservations.length > 0 ? (
+                    paginatedReservations.map((res) => (
                       <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
                         <td className="px-6 py-4">
                           <div className="font-semibold text-gray-900">{res.guestId}</div>
@@ -396,6 +422,15 @@ export default function Reservations() {
                                     Cancelar
                                   </button>
                                 )}
+
+                                {res.status === 'CANCELADA' && (
+                                  <button
+                                    onClick={() => handleDeleteReservation(res.id)}
+                                    className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
+                                  >
+                                    Eliminar
+                                  </button>
+                                )}
                               </div>
                             )}
                           </td>
@@ -412,6 +447,14 @@ export default function Reservations() {
                 </tbody>
               </table>
             </div>
+            {filteredReservations.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredReservations.length}
+                onPageChange={setCurrentPage}
+              />
+            )}
           </div>
         </AsyncStateHandler>
       </main>
