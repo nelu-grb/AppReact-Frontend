@@ -31,7 +31,7 @@ type ReservationUnitOption = { id: number; name: string; location: string };
 const PAGE_SIZE = 10;
 
 export default function Reservations() {
-  const { fullName, isAdmin, isRecepcionista } = useUserRole();
+  const { fullName, email, isAdmin, isRecepcionista, isHuesped } = useUserRole();
   const [searchParams] = useSearchParams();
   const canManageStatus = isAdmin || isRecepcionista;
   const [availableUnits, setAvailableUnits] = useState<ReservationUnitOption[]>([]);
@@ -226,7 +226,15 @@ export default function Reservations() {
     }
   };
 
-  const filteredReservations = reservations.filter((res) => {
+  const visibleReservations = isHuesped
+    ? reservations.filter((reservation) => {
+        const matchesEmail = email && reservation.guestEmail?.toLowerCase() === email.toLowerCase();
+        const matchesName = reservation.guestId?.toLowerCase() === fullName.toLowerCase();
+        return matchesEmail || matchesName;
+      })
+    : reservations;
+
+  const filteredReservations = visibleReservations.filter((res) => {
     const matchesStatus = statusFilter === 'ALL' || res.status === statusFilter;
     const matchesChannel = channelFilter === 'ALL' || res.channel === channelFilter;
     const matchesSearch =
