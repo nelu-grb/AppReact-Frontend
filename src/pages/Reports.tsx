@@ -1,215 +1,95 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUserRole } from '../hooks/useUserRole';
+import { getReportKpis, type ReportKpis } from '../services/reportService';
+import { getReservations, type ReservationResponse } from '../services/reservationService';
+import { getUnits, type Unit } from '../services/catalogService';
+import { parseApiError } from '../utils/errorHandler';
 
-interface TopUnit {
-  id: string;
-  name: string;
-  location: string;
-  type: 'Cabaña' | 'Hostal' | 'Lodge';
-  bookings: number;
-  occupancy: number; // Porcentaje numérico para facilitar cálculos y renders
-  revenue: string;
-}
-
-type TimeRange = 'last24h' | 'last7d' | 'last30d';
+const formatHour = (value: string) => {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('es-CL');
+  if (/^\d{1,2}:\d{2}/.test(value)) return value;
+  if (/^\d{1,2}$/.test(value)) return `${value.padStart(2, '0')}:00`;
+  return value;
+};
+const hourNumber = (value: string) => {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.getHours();
+  const match = value.match(/^(\d{1,2})/);
+  return match ? Number(match[1]) : 0;
+};
 
 export default function Reports() {
   const { isAdmin, isAuditor } = useUserRole();
-  const [timeRange, setTimeRange] = useState<TimeRange>('last24h');
-  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [kpis, setKpis] = useState<ReportKpis | null>(null);
+  const [reservations, setReservations] = useState<ReservationResponse[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  // Control de Acceso (RBAC): Solo Admin y Auditor tienen acceso a Reportería
-  const canViewReports = isAdmin || isAuditor;
+  useEffect(() => {
+    if (!isAdmin && !isAuditor) return;
+    Promise.all([getReportKpis(), getReservations(), getUnits()])
+      .then(([kpiData, reservationData, unitData]) => {
+        setKpis(kpiData);
+        setReservations(reservationData);
+        setUnits(unitData);
+      })
+      .catch((loadError) => setError(parseApiError(loadError)));
+  }, [isAdmin, isAuditor]);
 
-  if (!canViewReports) {
-    return (
-      <div className="min-h-screen bg-[#F5F6F8] flex items-center justify-center p-6 font-sans">
-        <div className="bg-white rounded-2xl border border-red-100 p-8 max-w-md w-full text-center shadow-xs">
-          <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">
-            ✕
-          </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Acceso Restringido</h2>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            No posees los permisos requeridos para acceder al panel de reportería y métricas consolidadas.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!isAdmin && !isAuditor) return <Restricted />;
+  if (error) return <PageMessage text={error} />;
+  if (!kpis) return <PageMessage text="Cargando datos de reportería..." />;
 
-  // Datos reactivos simulados según rango de tiempo
-  const kpiData = {
-    last24h: { avgBookings: '4.8', growth: '+12%', cycleTime: '18 min', occupancy: '77%', activeRooms: '134 de 174' },
-    last7d: { avgBookings: '5.2', growth: '+8%', cycleTime: '15 min', occupancy: '82%', activeRooms: '143 de 174' },
-    last30d: { avgBookings: '4.5', growth: '+15%', cycleTime: '21 min', occupancy: '79%', activeRooms: '138 de 174' },
-  }[timeRange];
+  const hourlyEntries = Object.entries(kpis.reservationsByHour);
+  const timeOfDay = hourlyEntries.reduce<Record<string, number>>((result, [hour, count]) => {
+    const hourValue = hourNumber(hour);
+    const period = hourValue < 6 ? 'Madrugada' : hourValue < 12 ? 'Mañana' : hourValue < 18 ? 'Tarde' : 'Noche';
+    result[period] = (result[period] ?? 0) + count;
+    return result;
+  }, {});
+  const maxTimeOfDay = Math.max(...Object.values(timeOfDay), 1);
+  const unitNames = new Map(units.map((unit) => [unit.unitId, unit.name]));
+  const requestedUnits = Object.entries(reservations.reduce<Record<string, number>>((result, reservation) => {
+    const key = String(reservation.unitId);
+    result[key] = (result[key] ?? 0) + 1;
+    return result;
+  }, {})).sort(([, first], [, second]) => second - first).slice(0, 5);
+  const statusCounts = reservations.reduce<Record<string, number>>((result, reservation) => {
+    result[reservation.status] = (result[reservation.status] ?? 0) + 1;
+    return result;
+  }, {});
 
-  const topUnits: TopUnit[] = [
-    { id: 'U-01', name: 'Cabaña Bosque Nativo #4', location: 'Pucón', type: 'Cabaña', bookings: 42, occupancy: 94, revenue: '$4.280.000' },
-    { id: 'U-02', name: 'Habitación Vista Volcán #102', location: 'Puerto Varas', type: 'Hostal', bookings: 38, occupancy: 89, revenue: '$2.950.000' },
-    { id: 'U-03', name: 'Lodge Termas del Valle #1', location: 'Curacautín', type: 'Lodge', bookings: 31, occupancy: 82, revenue: '$3.720.000' },
-    { id: 'U-04', name: 'Habitación Estándar #08', location: 'San Pedro de Atacama', type: 'Hostal', bookings: 27, occupancy: 78, revenue: '$1.890.000' },
-  ];
-
-  const handleExport = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
-      alert('Informe descargado correctamente en formato CSV.');
-    }, 1000);
+  const exportCsv = () => {
+    const rows = [
+      ['metric', 'value'],
+      ['activeOccupancy', String(kpis.activeOccupancy)],
+      ...Object.entries(statusCounts).map(([status, count]) => [`reservations_${status}`, String(count)]),
+      ...requestedUnits.map(([unitId, count]) => [`unit_${unitId}_reservations`, String(count)]),
+    ];
+    const blob = new Blob([rows.map((row) => row.join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'andesstay-reportes.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8">
-        
-        {/* Cabecera de la sección */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                Reportería & Analítica
-              </h1>
-              <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Kafka Live Stream
-              </span>
-            </div>
-            <p className="text-xs text-gray-500">
-              Indicadores clave procesados mediante agregaciones en tiempo real para la toma de decisiones.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-              className="bg-white border border-gray-200 text-xs font-semibold px-3 py-2 rounded-lg text-gray-700 shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-[#1A423B] cursor-pointer"
-            >
-              <option value="last24h">Últimas 24 horas</option>
-              <option value="last7d">Últimos 7 días</option>
-              <option value="last30d">Últimos 30 días</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={isExporting}
-              className="bg-[#1A423B] hover:bg-[#13332d] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors shadow-2xs flex items-center gap-2 disabled:opacity-50"
-            >
-              {isExporting ? 'Exportando...' : 'Exportar CSV'}
-            </button>
-          </div>
-        </div>
-
-        {/* Tarjetas de Métricas Core (KPIs) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-xl p-6 border border-gray-200/80 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Reservas por Hora (Promedio)
-              </span>
-              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                {kpiData.growth}
-              </span>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-gray-900 tracking-tight">{kpiData.avgBookings}</span>
-              <span className="text-xs text-gray-500">solicitudes/hora</span>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">Pico registrado entre las 19:00 y 21:00 hrs.</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-gray-200/80 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Tiempo de Ciclo Promedio
-              </span>
-              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                Óptimo
-              </span>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-gray-900 tracking-tight">{kpiData.cycleTime}</span>
-              <span className="text-xs text-gray-500">creación → confirmación</span>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">Tiempo medio de confirmación por el operador.</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-gray-200/80 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Tasa de Ocupación Activa
-              </span>
-              <span className="text-xs font-bold text-[#CB6D51] bg-[#CB6D51]/10 px-2 py-0.5 rounded-full">
-                Red Total
-              </span>
-            </div>
-            <div className="mt-4 flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-gray-900 tracking-tight">{kpiData.occupancy}</span>
-              <span className="text-xs text-gray-500">{kpiData.activeRooms} hab.</span>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">Calculada en tiempo real sobre unidades operativas.</p>
-          </div>
-        </div>
-
-        {/* Tabla de Unidades Más Demandadas */}
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Unidades Más Demandadas</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Top alojamientos ordenados por volumen de reserva</p>
-            </div>
-            <span className="text-xs font-semibold text-[#1A423B] bg-[#1A423B]/5 px-2.5 py-1 rounded-lg">
-              {topUnits.length} propiedades
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/60 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  <th className="px-6 py-3.5">Unidad</th>
-                  <th className="px-6 py-3.5">Destino</th>
-                  <th className="px-6 py-3.5">Tipo</th>
-                  <th className="px-6 py-3.5">Reservas Registradas</th>
-                  <th className="px-6 py-3.5">Ocupación</th>
-                  {isAdmin && <th className="px-6 py-3.5 text-right">Ingresos Est.</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-xs">
-                {topUnits.map((unit) => (
-                  <tr key={unit.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="px-6 py-4 font-bold text-gray-900">{unit.name}</td>
-                    <td className="px-6 py-4 text-gray-600">{unit.location}</td>
-                    <td className="px-6 py-4">
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-[#1A423B]/10 text-[#1A423B]">
-                        {unit.type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700 font-medium">{unit.bookings}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                          <div 
-                            className="bg-[#CB6D51] h-1.5 rounded-full transition-all duration-300" 
-                            style={{ width: `${unit.occupancy}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs font-bold text-gray-700">{unit.occupancy}%</span>
-                      </div>
-                    </td>
-                    {isAdmin && (
-                      <td className="px-6 py-4 text-right font-bold text-gray-900">{unit.revenue}</td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </main>
+  return <main className="min-h-screen bg-[#F5F6F8] p-6 md:p-8 font-sans">
+    <div className="max-w-7xl mx-auto space-y-6">
+      <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-bold text-gray-900">Reportería</h1><p className="text-xs text-gray-500 mt-1">Indicadores calculados por el servicio de reportes.</p></div><button type="button" onClick={exportCsv} className="bg-[#1A423B] text-white text-xs font-semibold px-4 py-2 rounded-lg">Exportar CSV</button></header>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5"><Metric label="Ocupación activa" value={String(kpis.activeOccupancy)} detail="estadías activas" /><Metric label="Reservas" value={String(reservations.length)} detail="reservas disponibles en el servicio" /></div>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+        <section className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-3"><h2 className="text-sm font-bold text-gray-900">Reservas por momento del día</h2><p className="text-xs text-gray-500 mt-1 mb-5">Agrupación de los eventos horarios registrados por reportes.</p>{hourlyEntries.length === 0 ? <EmptyState text="No hay eventos registrados." /> : <div className="space-y-4">{Object.entries(timeOfDay).map(([period, count]) => <div key={period}><div className="flex justify-between text-xs mb-1"><span className="font-medium text-gray-700">{period}</span><strong>{count}</strong></div><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-[#1A423B] rounded-full" style={{ width: `${(count / maxTimeOfDay) * 100}%` }} /></div></div>)}</div>}</section>
+        <section className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"><h2 className="text-sm font-bold text-gray-900">Unidades más solicitadas</h2><p className="text-xs text-gray-500 mt-1 mb-5">Ranking calculado desde las reservas registradas.</p>{requestedUnits.length === 0 ? <EmptyState text="No hay reservas para clasificar." /> : <div className="space-y-4">{requestedUnits.map(([unitId, count], index) => <div key={unitId} className="flex items-center gap-3"><span className="w-5 text-xs font-bold text-gray-400">{index + 1}</span><div className="flex-1 min-w-0"><p className="text-xs font-semibold text-gray-900 truncate">{unitNames.get(Number(unitId)) ?? `Unidad #${unitId}`}</p><div className="h-1.5 bg-gray-100 rounded-full mt-1 overflow-hidden"><div className="h-full bg-[#CB6D51] rounded-full" style={{ width: `${(count / (requestedUnits[0]?.[1] ?? 1)) * 100}%` }} /></div></div><span className="text-xs font-bold text-gray-700">{count}</span></div>)}</div>}</section>
+      </div>
+      <section className="bg-white rounded-xl border border-gray-200 p-6"><h2 className="text-sm font-bold text-gray-900 mb-4">Reservas por estado</h2><div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Object.entries(statusCounts).map(([status, count]) => <div key={status} className="border border-gray-100 rounded-lg p-3"><p className="text-[10px] text-gray-500">{status}</p><p className="text-xl font-bold text-gray-900">{count}</p></div>)}</div></section>
     </div>
-  );
+  </main>;
 }
+
+function Metric({ label, value, detail }: { label: string; value: string; detail: string }) { return <div className="bg-white rounded-xl p-6 border border-gray-200"><p className="text-[10px] font-bold text-gray-400 uppercase">{label}</p><p className="text-3xl font-bold text-gray-900 mt-3">{value}</p><p className="text-xs text-gray-500 mt-2">{detail}</p></div>; }
+function EmptyState({ text }: { text: string }) { return <div className="py-8 text-xs text-gray-400">{text}</div>; }
+function Restricted() { return <PageMessage text="No tienes permisos para consultar reportería." />; }
+function PageMessage({ text }: { text: string }) { return <main className="min-h-screen bg-[#F5F6F8] p-8 font-sans"><p className="max-w-7xl mx-auto text-sm text-gray-500">{text}</p></main>; }

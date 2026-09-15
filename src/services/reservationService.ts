@@ -7,7 +7,6 @@ export interface ReservationRequest {
   unitId: number; // Estricto como número para coincidir con el Long/Integer de Java
   startDate: string;
   endDate: string;
-  channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
   totalAmount: number;
 }
 
@@ -15,7 +14,7 @@ export type ReservationStatus =
   | 'CREADA' 
   | 'CONFIRMADA' 
   | 'CHECKIN_PENDIENTE' 
-  | 'EN_ESTADÍA' 
+  | 'EN_ESTADIA'
   | 'CHECKOUT' 
   | 'CANCELADA';
 
@@ -51,4 +50,8 @@ export const updateReservationStatus = async (
 ): Promise<ReservationResponse> => {
   const res = await apiClient.put<ReservationResponse>(`/reservations/${id}/status`, { status });
   return res.data;
+};
+
+export const deleteReservation = async (id: string | number): Promise<void> => {
+  await apiClient.delete(`/reservations/${id}`);
 };

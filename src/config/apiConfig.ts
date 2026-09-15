@@ -1,16 +1,21 @@
-const baseURL = import.meta.env.VITE_API_BASE_URL?.trim();
-
-if (!baseURL) {
-  throw new Error('Falta configurar VITE_API_BASE_URL');
-}
-
-const apiScope = import.meta.env.VITE_API_SCOPE?.trim();
-
-if (!apiScope) {
-  throw new Error('Falta configurar VITE_API_SCOPE');
-}
-
 export const API_CONFIG = {
-  baseURL: baseURL.replace(/\/+$/, ''), // Elimina cualquier barra inclinada al final
-  scopes: [apiScope],
+  baseURL: "https://hyfvjy63q3.execute-api.us-east-1.amazonaws.com",
+  scopes: ["api://3576de9b-8f84-48c4-b112-5a793bc04abc/access_as_user"],
+};
+
+export const API_ENDPOINTS = {
+  catalog: {
+    list: "/api/units",
+    detail: (id: string | number) => `/api/units/${id}`,
+  },
+  reservations: {
+    list: "/reservations",
+    create: "/reservations",
+    detail: (id: string) => `/reservations/${id}`,
+    update: (id: string) => `/reservations/${id}`,
+    delete: (id: string) => `/reservations/${id}`,
+  },
+  audit: {
+    list: "/audit",
+  },
 };

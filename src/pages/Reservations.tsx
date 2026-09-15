@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
+import { NoticeBanner, type Notice } from '../components/NoticeBanner';
+import { getUnits } from '../services/catalogService';
 import { 
   createReservation, 
   getReservations, 
   updateReservationStatus,
+  deleteReservation,
   type ReservationRequest,
   type ReservationResponse
 } from '../services/reservationService';
@@ -20,45 +24,74 @@ export interface Reservation {
   checkInDate: string;
   checkOutDate: string;
   channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
-  status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADÍA' | 'CHECKOUT' | 'CANCELADA';
+  status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADIA' | 'CHECKOUT' | 'CANCELADA';
   amount: string;
 }
 
-// Catálogo de unidades: Sin export para cumplir reglas de Fast Refresh de Vite
-const AVAILABLE_UNITS = [
-  { id: 1, name: 'Cabaña Bosque Nativo #4', location: 'Pucón' },
-  { id: 2, name: 'Habitación Vista Volcán #102', location: 'Puerto Varas' },
-  { id: 3, name: 'Lodge Termas del Valle #1', location: 'Curacautín' },
-  { id: 4, name: 'Habitación Estándar #08', location: 'San Pedro' },
-];
+type ReservationUnitOption = { id: number; name: string; location: string; pricePerNight: number };
+const PAGE_SIZE = 10;
 
 export default function Reservations() {
-  const { fullName, isAdmin, isRecepcionista } = useUserRole();
+  const { fullName, email, isAdmin, isRecepcionista, isHuesped } = useUserRole();
+  const [searchParams] = useSearchParams();
   const canManageStatus = isAdmin || isRecepcionista;
+  const [availableUnits, setAvailableUnits] = useState<ReservationUnitOption[]>([]);
 
   // Estados globales de consulta
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   
   // Estados de mutación independientes (UX)
   const [updatingReservationId, setUpdatingReservationId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Estados de interfaz
+  // Estados de interfaz test
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     guestId: fullName || '',
     guestEmail: '',
-    unitId: 1,
+    unitId: 0,
     checkInDate: '',
     checkOutDate: '',
     channel: 'Web' as Reservation['channel'],
-    amount: '$120.000',
+    amount: '',
   });
+
+  const loadCatalogUnits = useCallback(async () => {
+    try {
+      const units = await getUnits();
+      const unitOptions = units.map((unit) => ({
+        id: unit.unitId,
+        name: unit.name,
+        location: unit.city,
+        pricePerNight: unit.pricePerNight,
+      }));
+
+      setAvailableUnits(unitOptions);
+
+      const unitIdFromUrl = Number(searchParams.get('unitId'));
+      if (unitOptions.length > 0) {
+        const preferredUnitId = Number.isFinite(unitIdFromUrl) && unitIdFromUrl > 0
+          ? unitIdFromUrl
+          : unitOptions[0].id;
+
+        setFormData((prev) => ({
+          ...prev,
+          unitId: unitOptions.some((u) => u.id === prev.unitId)
+            ? prev.unitId
+            : preferredUnitId,
+        }));
+      }
+    } catch (err) {
+      console.error('Error loading catalog units:', err);
+    }
+  }, [searchParams]);
 
   // Cargar reservas desde Spring Boot (envuelto en useCallback)
   const fetchReservations = useCallback(async () => {
@@ -69,13 +102,12 @@ export default function Reservations() {
       
       if (Array.isArray(data)) {
         const mapped: Reservation[] = data.map((item: ReservationResponse) => {
-          const matchedUnit = AVAILABLE_UNITS.find((u) => u.id === Number(item.unitId));
           return {
             id: String(item.id || item.code || Date.now()),
             code: item.code || `R-2026-${item.id || '000'}`,
             guestId: item.guestId || item.guestId || 'Huésped',
             guestEmail: item.guestEmail || 'sin-email@dominio.com',
-            unitName: item.unitName || matchedUnit?.name || `Unidad #${item.unitId}`,
+            unitName: item.unitName || `Unidad #${item.unitId}`,
             checkInDate: item.startDate,
             checkOutDate: item.endDate,
             channel: (item.channel as Reservation['channel']) || 'Web',
@@ -93,6 +125,46 @@ export default function Reservations() {
   }, []);
 
   useEffect(() => {
+    loadCatalogUnits();
+  }, [loadCatalogUnits]);
+
+  useEffect(() => {
+    if (!notice) return;
+
+    const timeout = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!formData.unitId || !formData.checkInDate || !formData.checkOutDate) {
+      setFormData((prev) => ({ ...prev, amount: prev.amount || '' }));
+      return;
+    }
+
+    const selectedUnit = availableUnits.find((unit) => unit.id === formData.unitId);
+    if (!selectedUnit || !selectedUnit.pricePerNight) {
+      return;
+    }
+
+    const checkIn = new Date(formData.checkInDate);
+    const checkOut = new Date(formData.checkOutDate);
+
+    if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime()) || checkOut <= checkIn) {
+      return;
+    }
+
+    const nights = Math.round((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+    const totalAmount = selectedUnit.pricePerNight * nights;
+    const formattedAmount = formatCLP(totalAmount);
+
+    setFormData((prev) => (
+      prev.amount === formattedAmount
+        ? prev
+        : { ...prev, amount: formattedAmount }
+    ));
+  }, [availableUnits, formData.unitId, formData.checkInDate, formData.checkOutDate]);
+
+  useEffect(() => {
     fetchReservations();
   }, [fetchReservations]);
 
@@ -104,8 +176,36 @@ export default function Reservations() {
       setReservations((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
       );
+      setNotice({
+        type: 'success',
+        message: `Reserva actualizada a ${nextStatus}.`,
+      });
     } catch (err) {
-      alert(parseApiError(err));
+      setNotice({
+        type: 'error',
+        message: parseApiError(err),
+      });
+    } finally {
+      setUpdatingReservationId(null);
+    }
+  };
+
+  const handleDeleteReservation = async (id: string) => {
+    if (!window.confirm('¿Eliminar esta reserva cancelada de la vista operativa?')) return;
+
+    try {
+      setUpdatingReservationId(id);
+      await deleteReservation(id);
+      setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
+      setNotice({
+        type: 'info',
+        message: 'Reserva eliminada de la vista operativa.',
+      });
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        message: parseApiError(err),
+      });
     } finally {
       setUpdatingReservationId(null);
     }
@@ -115,18 +215,27 @@ export default function Reservations() {
     e.preventDefault();
 
     if (!formData.guestId || !formData.guestEmail || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
-      alert('Por favor completa todos los campos requeridos.');
+      setNotice({
+        type: 'error',
+        message: 'Por favor completa todos los campos requeridos.',
+      });
       return;
     }
 
     if (new Date(formData.checkOutDate) <= new Date(formData.checkInDate)) {
-      alert('La fecha de salida debe ser posterior a la fecha de entrada.');
+      setNotice({
+        type: 'error',
+        message: 'La fecha de salida debe ser posterior a la fecha de entrada.',
+      });
       return;
     }
 
     const numericAmount = cleanCLP(formData.amount);
     if (numericAmount <= 0) {
-      alert('El monto debe ser superior a $0.');
+      setNotice({
+        type: 'error',
+        message: 'El monto debe ser superior a $0.',
+      });
       return;
     }
 
@@ -137,13 +246,12 @@ export default function Reservations() {
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
       totalAmount: numericAmount,
-      channel: formData.channel,
     };
 
     try {
       setIsCreating(true);
       const backendResponse = await createReservation(payload);
-      const selectedUnit = AVAILABLE_UNITS.find((u) => u.id === formData.unitId);
+      const selectedUnit = availableUnits.find((u) => u.id === formData.unitId);
 
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const newReservation: Reservation = {
@@ -165,22 +273,36 @@ export default function Reservations() {
       setFormData({
         guestId: fullName || '',
         guestEmail: '',
-        unitId: 1,
+        unitId: availableUnits[0]?.id ?? 0,
         checkInDate: '',
         checkOutDate: '',
         channel: 'Web',
-        amount: '$120.000',
+        amount: '',
       });
 
-      alert('¡Reserva creada y guardada en base de datos con éxito!');
+      setNotice({
+        type: 'success',
+        message: '¡Reserva creada y guardada en base de datos con éxito!',
+      });
     } catch (err) {
-      alert(parseApiError(err));
+      setNotice({
+        type: 'error',
+        message: parseApiError(err),
+      });
     } finally {
       setIsCreating(false);
     }
   };
 
-  const filteredReservations = reservations.filter((res) => {
+  const visibleReservations = isHuesped
+    ? reservations.filter((reservation) => {
+        const matchesEmail = email && reservation.guestEmail?.toLowerCase() === email.toLowerCase();
+        const matchesName = reservation.guestId?.toLowerCase() === fullName.toLowerCase();
+        return matchesEmail || matchesName;
+      })
+    : reservations;
+
+  const filteredReservations = visibleReservations.filter((res) => {
     const matchesStatus = statusFilter === 'ALL' || res.status === statusFilter;
     const matchesChannel = channelFilter === 'ALL' || res.channel === channelFilter;
     const matchesSearch =
@@ -189,6 +311,15 @@ export default function Reservations() {
       res.unitName.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesChannel && matchesSearch;
   });
+  const totalPages = Math.max(1, Math.ceil(filteredReservations.length / PAGE_SIZE));
+  const paginatedReservations = filteredReservations.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, channelFilter, searchQuery]);
 
   const getStatusBadge = (status: Reservation['status']) => {
     switch (status) {
@@ -198,7 +329,7 @@ export default function Reservations() {
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'CHECKIN_PENDIENTE':
         return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'EN_ESTADÍA':
+      case 'EN_ESTADIA':
         return 'bg-[#1A423B]/10 text-[#1A423B] border-[#1A423B]/20 font-bold';
       case 'CHECKOUT':
         return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -211,6 +342,7 @@ export default function Reservations() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
+      <NoticeBanner notice={notice} onClose={() => setNotice(null)} />
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -257,7 +389,7 @@ export default function Reservations() {
                 <option value="CREADA">CREADA</option>
                 <option value="CONFIRMADA">CONFIRMADA</option>
                 <option value="CHECKIN_PENDIENTE">CHECKIN_PENDIENTE</option>
-                <option value="EN_ESTADÍA">EN_ESTADÍA</option>
+                <option value="EN_ESTADIA">EN_ESTADIA</option>
                 <option value="CHECKOUT">CHECKOUT</option>
                 <option value="CANCELADA">CANCELADA</option>
               </select>
@@ -303,8 +435,8 @@ export default function Reservations() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
-                  {filteredReservations.length > 0 ? (
-                    filteredReservations.map((res) => (
+                  {paginatedReservations.length > 0 ? (
+                    paginatedReservations.map((res) => (
                       <tr key={res.id} className="hover:bg-gray-50/60 transition-colors">
                         <td className="px-6 py-4">
                           <div className="font-semibold text-gray-900">{res.guestId}</div>
@@ -343,14 +475,14 @@ export default function Reservations() {
 
                                 {(res.status === 'CONFIRMADA' || res.status === 'CHECKIN_PENDIENTE') && (
                                   <button
-                                    onClick={() => handleUpdateStatus(res.id, 'EN_ESTADÍA')}
+                                    onClick={() => handleUpdateStatus(res.id, 'EN_ESTADIA')}
                                     className="bg-[#1A423B] hover:bg-[#255e54] text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
                                   >
                                     Check-In
                                   </button>
                                 )}
 
-                                {res.status === 'EN_ESTADÍA' && (
+                                {res.status === 'EN_ESTADIA' && (
                                   <button
                                     onClick={() => handleUpdateStatus(res.id, 'CHECKOUT')}
                                     className="bg-gray-800 hover:bg-gray-900 text-white text-xs font-semibold px-2.5 py-1 rounded shadow-sm transition-colors"
@@ -365,6 +497,15 @@ export default function Reservations() {
                                     className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
                                   >
                                     Cancelar
+                                  </button>
+                                )}
+
+                                {res.status === 'CANCELADA' && (
+                                  <button
+                                    onClick={() => handleDeleteReservation(res.id)}
+                                    className="text-rose-600 hover:bg-rose-50 text-xs font-semibold px-2 py-1 rounded transition-colors"
+                                  >
+                                    Eliminar
                                   </button>
                                 )}
                               </div>
@@ -383,6 +524,14 @@ export default function Reservations() {
                 </tbody>
               </table>
             </div>
+            {filteredReservations.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredReservations.length}
+                onPageChange={setCurrentPage}
+              />
+            )}
           </div>
         </AsyncStateHandler>
       </main>
@@ -424,11 +573,15 @@ export default function Reservations() {
                   onChange={(e) => setFormData({ ...formData, unitId: Number(e.target.value) })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
                 >
-                  {AVAILABLE_UNITS.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name} ({unit.location})
-                    </option>
-                  ))}
+                  {availableUnits.length > 0 ? (
+                    availableUnits.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name} ({unit.location})
+                      </option>
+                    ))
+                  ) : (
+                    <option value={0}>Cargando unidades...</option>
+                  )}
                 </select>
               </div>
 
@@ -474,9 +627,9 @@ export default function Reservations() {
                   <input
                     type="text"
                     value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
-                    placeholder="$120.000"
+                    readOnly
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B] bg-gray-50"
+                    placeholder="Se calcula automáticamente"
                   />
                 </div>
               </div>
@@ -502,6 +655,26 @@ export default function Reservations() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Pagination({ currentPage, totalPages, totalItems, onPageChange }: { currentPage: number; totalPages: number; totalItems: number; onPageChange: (page: number) => void }) {
+  const firstItem = (currentPage - 1) * PAGE_SIZE + 1;
+  const lastItem = Math.min(currentPage * PAGE_SIZE, totalItems);
+
+  return (
+    <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3 text-xs text-gray-500">
+      <span>Mostrando {firstItem}-{lastItem} de {totalItems}</span>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} className="rounded border border-gray-200 px-2.5 py-1 disabled:opacity-40">
+          Anterior
+        </button>
+        <span>Página {currentPage} de {totalPages}</span>
+        <button type="button" disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} className="rounded border border-gray-200 px-2.5 py-1 disabled:opacity-40">
+          Siguiente
+        </button>
+      </div>
     </div>
   );
 }

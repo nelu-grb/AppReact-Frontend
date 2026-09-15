@@ -27,9 +27,9 @@ export default function Navbar() {
       <div className="flex items-center gap-8">
         <div className="flex items-center gap-2.5 font-bold text-lg tracking-wide">
           <span className="p-1.5 bg-[#CB6D51] rounded text-white text-xs font-black leading-none">
-            RH
+            AS
           </span>
-          <span className="text-white text-base">Red Hospedaje</span>
+          <span className="text-white text-base">AndesStay</span>
         </div>
 
         <nav className="flex items-center gap-1.5">

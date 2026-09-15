@@ -11,7 +11,6 @@ import Catalog from './pages/Catalog';
 import Reports from './pages/Reports';
 import Audit from './pages/Audit';
 
-// Componente para proteger rutas según la autenticación y los roles del usuario
 function ProtectedRoute({ 
   allowedRoles 
 }: { 
@@ -19,7 +18,7 @@ function ProtectedRoute({
 }) {
   const { inProgress, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();
-  const { hasAnyRole } = useUserRole();
+  const { hasAnyRole, rolesLoading } = useUserRole();
 
   if (inProgress !== InteractionStatus.None) {
     return null;
@@ -30,6 +29,10 @@ function ProtectedRoute({
   }
 
   if (accounts.length === 0) {
+    return null;
+  }
+
+  if (rolesLoading) {
     return null;
   }
 
