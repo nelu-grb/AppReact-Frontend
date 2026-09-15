@@ -5,6 +5,20 @@ import { getReservations, type ReservationResponse } from '../services/reservati
 import { getUnits, type Unit } from '../services/catalogService';
 import { parseApiError } from '../utils/errorHandler';
 
+const formatHour = (value: string) => {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('es-CL');
+  if (/^\d{1,2}:\d{2}/.test(value)) return value;
+  if (/^\d{1,2}$/.test(value)) return `${value.padStart(2, '0')}:00`;
+  return value;
+};
+const hourNumber = (value: string) => {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.getHours();
+  const match = value.match(/^(\d{1,2})/);
+  return match ? Number(match[1]) : 0;
+};
+
 export default function Reports() {
   const { isAdmin, isAuditor } = useUserRole();
   const [kpis, setKpis] = useState<ReportKpis | null>(null);
@@ -29,8 +43,8 @@ export default function Reports() {
 
   const hourlyEntries = Object.entries(kpis.reservationsByHour);
   const timeOfDay = hourlyEntries.reduce<Record<string, number>>((result, [hour, count]) => {
-    const hourNumber = new Date(hour).getHours();
-    const period = hourNumber < 6 ? 'Madrugada' : hourNumber < 12 ? 'Mañana' : hourNumber < 18 ? 'Tarde' : 'Noche';
+    const hourValue = hourNumber(hour);
+    const period = hourValue < 6 ? 'Madrugada' : hourValue < 12 ? 'Mañana' : hourValue < 18 ? 'Tarde' : 'Noche';
     result[period] = (result[period] ?? 0) + count;
     return result;
   }, {});

@@ -11,6 +11,13 @@ import { parseApiError } from '../utils/errorHandler';
 const today = () => new Date().toISOString().slice(0, 10);
 const dateLabel = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString('es-CL');
 const formatDateTime = (value: string) => new Date(value).toLocaleString('es-CL');
+const formatHour = (value: string) => {
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('es-CL');
+  if (/^\d{1,2}:\d{2}/.test(value)) return value;
+  if (/^\d{1,2}$/.test(value)) return `${value.padStart(2, '0')}:00`;
+  return value;
+};
 
 export default function Dashboard() {
   const { fullName, email, isAdmin, isRecepcionista, isHuesped, isAuditor } = useUserRole();
@@ -72,7 +79,7 @@ function AdminView({ units, reservations, kpis, auditEvents }: { units: Unit[]; 
   const recent = auditEvents.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
   const statuses = countStatuses(reservations);
 
-  return <><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6"><MetricCard label="Ocupación activa" value={`${occupancy}%`} detail={`${kpis?.activeOccupancy ?? 0} estadías de ${units.length} unidades`} dark /><MetricCard label="Unidades disponibles" value={String(available)} detail={`de ${units.length} en catálogo`} /><MetricCard label="Reservas creadas" value={String(reservations.length)} detail={`${pending} pendientes de confirmar`} /><MetricCard label="Ciclo promedio" value={`${Math.round(kpis?.averageCycleTimeMinutes ?? 0)} min`} detail="desde reportes Kafka" /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><Panel title="Reservas por hora" subtitle="Eventos procesados por reportes">{hourly.length ? hourly.map(([hour, count]) => <Row key={hour} label={new Date(hour).toLocaleString('es-CL')} value={String(count)} />) : <EmptyState text="No hay eventos registrados." />}</Panel><Panel title="Estado de reservas" subtitle="Conteo del servicio de reservas">{statuses.length ? statuses.map(([status, count]) => <Row key={status} label={status} value={String(count)} />) : <EmptyState text="No hay reservas registradas." />}</Panel></div><div className="mt-6"><Panel title="Actividad reciente" subtitle="Eventos recibidos por auditoría">{recent.length ? recent.map((event) => <Row key={event.id} label={`${event.eventType} - ${event.actor || 'Sin actor'}`} value={formatDateTime(event.timestamp)} />) : <EmptyState text="No hay eventos auditados." />}</Panel></div></>;
+  return <><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6"><MetricCard label="Ocupación activa" value={`${occupancy}%`} detail={`${kpis?.activeOccupancy ?? 0} estadías de ${units.length} unidades`} dark /><MetricCard label="Unidades disponibles" value={String(available)} detail={`de ${units.length} en catálogo`} /><MetricCard label="Reservas creadas" value={String(reservations.length)} detail={`${pending} pendientes de confirmar`} /><MetricCard label="Ciclo promedio" value={`${Math.round(kpis?.averageCycleTimeMinutes ?? 0)} min`} detail="desde reportes Kafka" /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><Panel title="Reservas por hora" subtitle="Eventos procesados por reportes">{hourly.length ? hourly.map(([hour, count]) => <Row key={hour} label={formatHour(hour)} value={String(count)} />) : <EmptyState text="No hay eventos registrados." />}</Panel><Panel title="Estado de reservas" subtitle="Conteo del servicio de reservas">{statuses.length ? statuses.map(([status, count]) => <Row key={status} label={status} value={String(count)} />) : <EmptyState text="No hay reservas registradas." />}</Panel></div><div className="mt-6"><Panel title="Actividad reciente" subtitle="Eventos recibidos por auditoría">{recent.length ? recent.map((event) => <Row key={event.id} label={`${event.eventType} - ${event.actor || 'Sin actor'}`} value={formatDateTime(event.timestamp)} />) : <EmptyState text="No hay eventos auditados." />}</Panel></div></>;
 }
 
 function ReceptionView({ units, reservations }: { units: Unit[]; reservations: ReservationResponse[] }) {
