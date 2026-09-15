@@ -33,7 +33,7 @@ export default function Dashboard() {
       try {
         setLoading(true);
         const reservationPromise = getReservations();
-        const unitPromise = isAdmin || isRecepcionista ? getUnits() : Promise.resolve([] as Unit[]);
+        const unitPromise = isAdmin || isRecepcionista || isHuesped ? getUnits() : Promise.resolve([] as Unit[]);
         const kpiPromise = isAdmin ? getReportKpis() : Promise.resolve(null);
         const auditPromise = isAdmin || isAuditor ? getAuditEvents() : Promise.resolve([] as AuditEvent[]);
         const [reservationData, unitData, kpiData, auditData] = await Promise.all([
@@ -50,7 +50,7 @@ export default function Dashboard() {
       }
     };
     load();
-  }, [isAdmin, isAuditor, isRecepcionista]);
+  }, [isAdmin, isAuditor, isHuesped, isRecepcionista]);
 
   const roleLabel = isAdmin ? 'Admin' : isRecepcionista ? 'Recepcionista' : isAuditor ? 'Auditor' : 'Huésped';
 
@@ -61,7 +61,7 @@ export default function Dashboard() {
       {error && <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{error}</p>}
       {!loading && !error && isAdmin && <AdminView units={units} reservations={reservations} kpis={kpis} auditEvents={auditEvents} />}
       {!loading && !error && isRecepcionista && <ReceptionView units={units} reservations={reservations} />}
-      {!loading && !error && isHuesped && <GuestView reservations={reservations} email={email} fullName={fullName} />}
+      {!loading && !error && isHuesped && <GuestView units={units} reservations={reservations} email={email} fullName={fullName} />}
       {!loading && !error && isAuditor && !isAdmin && <AuditorView auditEvents={auditEvents} />}
     </div>
   );
@@ -89,9 +89,10 @@ function ReceptionView({ units, reservations }: { units: Unit[]; reservations: R
   return <><div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6"><MetricCard label="Llegadas hoy" value={String(arrivals.length)} detail="reservas con entrada hoy" dark /><MetricCard label="Salidas hoy" value={String(departures.length)} detail="reservas con salida hoy" /><MetricCard label="Unidades disponibles" value={String(units.filter((unit) => unit.availability).length)} detail={`de ${units.length} en catálogo`} /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><ReservationPanel title="Llegadas de hoy" items={arrivals} empty="No hay llegadas para hoy." /><ReservationPanel title="Salidas de hoy" items={departures} empty="No hay salidas para hoy." /></div><Link to="/reservations" className="inline-block mt-6 text-xs font-semibold text-[#1A423B]">Gestionar reservas →</Link></>;
 }
 
-function GuestView({ reservations, email, fullName }: { reservations: ReservationResponse[]; email: string; fullName: string }) {
+function GuestView({ units, reservations, email, fullName }: { units: Unit[]; reservations: ReservationResponse[]; email: string; fullName: string }) {
   const own = reservations.filter((item) => item.guestEmail?.toLowerCase() === email.toLowerCase() || item.guestId?.toLowerCase() === fullName.toLowerCase());
-  return <><div className="bg-[#1A423B] rounded-xl p-6 text-white mb-6"><h2 className="text-lg font-bold">Hola, {fullName}</h2><p className="text-xs text-emerald-100 mt-1">Aquí puedes consultar tus reservas y sus estados actuales.</p></div><Panel title="Mis reservas" subtitle="Información proveniente del servicio de reservas">{own.length ? own.map((item) => <div key={item.id} className="flex items-center justify-between gap-4 border-b border-gray-100 py-4 text-xs"><div><p className="font-bold text-gray-900">Reserva #{item.id}</p><p className="text-gray-500">{dateLabel(item.startDate)} - {dateLabel(item.endDate)}</p></div><span className="font-bold text-[#1A423B]">{item.status}</span></div>) : <EmptyState text="No hay reservas asociadas a tu cuenta." />}</Panel><Link to="/reservations" className="inline-block mt-6 text-xs font-semibold text-[#1A423B]">Ver reservas →</Link></>;
+  const availableUnits = units.filter((unit) => unit.availability);
+  return <><div className="bg-[#1A423B] rounded-xl p-6 text-white mb-6"><h2 className="text-lg font-bold">Hola, {fullName}</h2><p className="text-xs text-emerald-100 mt-1">Aquí puedes consultar tus reservas y sus estados actuales.</p></div><Panel title="Alojamientos disponibles" subtitle="Consulta las unidades disponibles antes de reservar"><div className="grid grid-cols-1 md:grid-cols-2 gap-3">{availableUnits.length ? availableUnits.map((unit) => <div key={unit.unitId} className="rounded-lg border border-gray-200 bg-gray-50/70 p-4"><div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-bold text-gray-900">{unit.name}</h4><p className="mt-1 text-xs text-gray-500">{unit.city} · {unit.type}</p></div><span className="shrink-0 rounded bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">Disponible</span></div><p className="mt-3 text-sm font-bold text-[#1A423B]">${Number(unit.pricePerNight).toLocaleString('es-CL')} / noche</p></div>) : <EmptyState text="No hay alojamientos disponibles en este momento." />}</div></Panel><Panel title="Mis reservas" subtitle="Información proveniente del servicio de reservas">{own.length ? own.map((item) => <div key={item.id} className="flex items-center justify-between gap-4 border-b border-gray-100 py-4 text-xs"><div><p className="font-bold text-gray-900">Reserva #{item.id}</p><p className="text-gray-500">{dateLabel(item.startDate)} - {dateLabel(item.endDate)}</p></div><span className="font-bold text-[#1A423B]">{item.status}</span></div>) : <EmptyState text="No hay reservas asociadas a tu cuenta." />}</Panel><Link to="/reservations" className="inline-block mt-6 text-xs font-semibold text-[#1A423B]">Ver reservas →</Link></>;
 }
 
 function AuditorView({ auditEvents }: { auditEvents: AuditEvent[] }) { return <Panel title="Actividad auditada" subtitle="Vista de solo lectura">{auditEvents.length ? auditEvents.slice(0, 8).map((event) => <Row key={event.id} label={`${event.eventType} - ${event.actor || 'Sin actor'}`} value={formatDateTime(event.timestamp)} />) : <EmptyState text="No hay eventos auditados." />}</Panel>; }
