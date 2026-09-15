@@ -27,7 +27,7 @@ export interface Reservation {
   amount: string;
 }
 
-type ReservationUnitOption = { id: number; name: string; location: string };
+type ReservationUnitOption = { id: number; name: string; location: string; pricePerNight: number };
 const PAGE_SIZE = 10;
 
 export default function Reservations() {
@@ -58,7 +58,7 @@ export default function Reservations() {
     checkInDate: '',
     checkOutDate: '',
     channel: 'Web' as Reservation['channel'],
-    amount: '$120000',
+    amount: '',
   });
 
   const loadCatalogUnits = useCallback(async () => {
@@ -68,6 +68,7 @@ export default function Reservations() {
         id: unit.unitId,
         name: unit.name,
         location: unit.city,
+        pricePerNight: unit.pricePerNight,
       }));
 
       setAvailableUnits(unitOptions);
@@ -124,6 +125,35 @@ export default function Reservations() {
   useEffect(() => {
     loadCatalogUnits();
   }, [loadCatalogUnits]);
+
+  useEffect(() => {
+    if (!formData.unitId || !formData.checkInDate || !formData.checkOutDate) {
+      setFormData((prev) => ({ ...prev, amount: prev.amount || '' }));
+      return;
+    }
+
+    const selectedUnit = availableUnits.find((unit) => unit.id === formData.unitId);
+    if (!selectedUnit || !selectedUnit.pricePerNight) {
+      return;
+    }
+
+    const checkIn = new Date(formData.checkInDate);
+    const checkOut = new Date(formData.checkOutDate);
+
+    if (Number.isNaN(checkIn.getTime()) || Number.isNaN(checkOut.getTime()) || checkOut <= checkIn) {
+      return;
+    }
+
+    const nights = Math.round((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+    const totalAmount = selectedUnit.pricePerNight * nights;
+    const formattedAmount = formatCLP(totalAmount);
+
+    setFormData((prev) => (
+      prev.amount === formattedAmount
+        ? prev
+        : { ...prev, amount: formattedAmount }
+    ));
+  }, [availableUnits, formData.unitId, formData.checkInDate, formData.checkOutDate]);
 
   useEffect(() => {
     fetchReservations();
@@ -215,7 +245,7 @@ export default function Reservations() {
         checkInDate: '',
         checkOutDate: '',
         channel: 'Web',
-        amount: '$120.000',
+        amount: '',
       });
 
       alert('¡Reserva creada y guardada en base de datos con éxito!');
@@ -558,9 +588,9 @@ export default function Reservations() {
                   <input
                     type="text"
                     value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
-                    placeholder="$120.000"
+                    readOnly
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B] bg-gray-50"
+                    placeholder="Se calcula automáticamente"
                   />
                 </div>
               </div>
