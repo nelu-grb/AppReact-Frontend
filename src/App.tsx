@@ -11,7 +11,7 @@ import Catalog from './pages/Catalog';
 import Reports from './pages/Reports';
 import Audit from './pages/Audit';
 
-// Guardián de rutas RBAC con soporte para carga inicial de cuentas
+
 function ProtectedRoute({ 
   allowedRoles 
 }: { 
