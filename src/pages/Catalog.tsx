@@ -4,6 +4,7 @@ import { useUserRole } from '../hooks/useUserRole';
 import { createUnit, deleteUnit, getUnits, updateUnit } from '../services/catalogService';
 import type { Unit, UnitType } from '../services/catalogService';
 import { errorHandler } from '../utils/errorHandler';
+import { NoticeBanner, type Notice } from '../components/NoticeBanner';
 
 const TYPES_LIST = ['Todos', 'HABITACION', 'SUITE', 'APARTAMENTO', 'CABANA'] as const;
 
@@ -28,6 +29,7 @@ export default function Catalog() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingUnitId, setEditingUnitId] = useState<number | null>(null);
@@ -52,6 +54,13 @@ export default function Catalog() {
   useEffect(() => {
     fetchUnits();
   }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+
+    const timeout = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
   const filteredUnits = units.filter((unit) => {
     const matchesType = selectedType === 'Todos' || unit.type === selectedType;
@@ -95,7 +104,10 @@ export default function Catalog() {
     e.preventDefault();
 
     if (!formData.name.trim() || !formData.address.trim() || formData.rooms <= 0 || formData.pricePerNight <= 0) {
-      alert('Completa nombre, dirección, habitaciones y un precio mayor que cero para guardar la unidad.');
+      setNotice({
+        type: 'error',
+        message: 'Completa nombre, dirección, habitaciones y un precio mayor que cero para guardar la unidad.',
+      });
       return;
     }
 
@@ -125,8 +137,15 @@ export default function Catalog() {
       setIsModalOpen(false);
       setEditingUnitId(null);
       setFormData(emptyForm);
+      setNotice({
+        type: 'success',
+        message: editingUnitId !== null ? 'Unidad actualizada correctamente.' : 'Unidad creada correctamente.',
+      });
     } catch (err) {
-      alert(errorHandler(err));
+      setNotice({
+        type: 'error',
+        message: errorHandler(err),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -140,13 +159,21 @@ export default function Catalog() {
     try {
       await deleteUnit(unitId);
       setUnits((prev) => prev.filter((unit) => unit.unitId !== unitId));
+      setNotice({
+        type: 'info',
+        message: 'Unidad eliminada del catálogo.',
+      });
     } catch (err) {
-      alert(errorHandler(err));
+      setNotice({
+        type: 'error',
+        message: errorHandler(err),
+      });
     }
   };
 
   return (
     <div className="min-h-screen bg-[#F4F6F6] flex flex-col font-sans">
+      <NoticeBanner notice={notice} onClose={() => setNotice(null)} />
       <div className="flex-1 flex flex-col md:flex-row">
         <aside className="w-full md:w-60 bg-[#F4EFEA]/80 p-6 flex flex-col justify-between shrink-0 border-r border-[#E5DDD5]">
           <div className="space-y-6">

@@ -4,6 +4,7 @@ import { useUserRole } from '../hooks/useUserRole';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
+import { NoticeBanner, type Notice } from '../components/NoticeBanner';
 import { getUnits } from '../services/catalogService';
 import { 
   createReservation, 
@@ -40,6 +41,7 @@ export default function Reservations() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   
   // Estados de mutación independientes (UX)
   const [updatingReservationId, setUpdatingReservationId] = useState<string | null>(null);
@@ -127,6 +129,13 @@ export default function Reservations() {
   }, [loadCatalogUnits]);
 
   useEffect(() => {
+    if (!notice) return;
+
+    const timeout = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  useEffect(() => {
     if (!formData.unitId || !formData.checkInDate || !formData.checkOutDate) {
       setFormData((prev) => ({ ...prev, amount: prev.amount || '' }));
       return;
@@ -167,8 +176,15 @@ export default function Reservations() {
       setReservations((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: nextStatus } : r))
       );
+      setNotice({
+        type: 'success',
+        message: `Reserva actualizada a ${nextStatus}.`,
+      });
     } catch (err) {
-      alert(parseApiError(err));
+      setNotice({
+        type: 'error',
+        message: parseApiError(err),
+      });
     } finally {
       setUpdatingReservationId(null);
     }
@@ -181,8 +197,15 @@ export default function Reservations() {
       setUpdatingReservationId(id);
       await deleteReservation(id);
       setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
+      setNotice({
+        type: 'info',
+        message: 'Reserva eliminada de la vista operativa.',
+      });
     } catch (err) {
-      alert(parseApiError(err));
+      setNotice({
+        type: 'error',
+        message: parseApiError(err),
+      });
     } finally {
       setUpdatingReservationId(null);
     }
@@ -192,18 +215,27 @@ export default function Reservations() {
     e.preventDefault();
 
     if (!formData.guestId || !formData.guestEmail || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
-      alert('Por favor completa todos los campos requeridos.');
+      setNotice({
+        type: 'error',
+        message: 'Por favor completa todos los campos requeridos.',
+      });
       return;
     }
 
     if (new Date(formData.checkOutDate) <= new Date(formData.checkInDate)) {
-      alert('La fecha de salida debe ser posterior a la fecha de entrada.');
+      setNotice({
+        type: 'error',
+        message: 'La fecha de salida debe ser posterior a la fecha de entrada.',
+      });
       return;
     }
 
     const numericAmount = cleanCLP(formData.amount);
     if (numericAmount <= 0) {
-      alert('El monto debe ser superior a $0.');
+      setNotice({
+        type: 'error',
+        message: 'El monto debe ser superior a $0.',
+      });
       return;
     }
 
@@ -248,9 +280,15 @@ export default function Reservations() {
         amount: '',
       });
 
-      alert('¡Reserva creada y guardada en base de datos con éxito!');
+      setNotice({
+        type: 'success',
+        message: '¡Reserva creada y guardada en base de datos con éxito!',
+      });
     } catch (err) {
-      alert(parseApiError(err));
+      setNotice({
+        type: 'error',
+        message: parseApiError(err),
+      });
     } finally {
       setIsCreating(false);
     }
@@ -304,6 +342,7 @@ export default function Reservations() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans">
+      <NoticeBanner notice={notice} onClose={() => setNotice(null)} />
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
