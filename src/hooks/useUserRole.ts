@@ -81,6 +81,7 @@ export function useUserRole() {
 
   const idTokenClaims = activeAccount?.idTokenClaims as Record<string, unknown> | undefined;
   const fullName: string = activeAccount?.name || (typeof idTokenClaims?.name === 'string' ? idTokenClaims.name : '') || 'Usuario';
+  const email = activeAccount?.username || (typeof idTokenClaims?.preferred_username === 'string' ? idTokenClaims.preferred_username : '');
 
   const nameParts = fullName.trim().split(' ');
   const initials =
@@ -108,6 +109,7 @@ export function useUserRole() {
 
   return {
     fullName,
+    email,
     initials,
     roles,
     rolesLoading,

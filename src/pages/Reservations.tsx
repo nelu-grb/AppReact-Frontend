@@ -58,7 +58,7 @@ export default function Reservations() {
     checkInDate: '',
     checkOutDate: '',
     channel: 'Web' as Reservation['channel'],
-    amount: '$120.000',
+    amount: '$120000',
   });
 
   const loadCatalogUnits = useCallback(async () => {
