@@ -4,12 +4,12 @@ import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
 import { 
-  createReservation, 
   getReservations, 
   updateReservationStatus,
   type ReservationRequest,
   type ReservationResponse
 } from '../services/reservationService';
+import { createReservationCheckout } from '../services/webpayService';
 
 export interface Reservation {
   id: string;
@@ -142,42 +142,44 @@ export default function Reservations() {
 
     try {
       setIsCreating(true);
-      const backendResponse = await createReservation(payload);
-      const selectedUnit = AVAILABLE_UNITS.find((u) => u.id === formData.unitId);
+      const { url, token } = await createReservationCheckout(payload);
+      if (!url || !token) {
+        throw new Error('El backend no devolvió la URL y el token de Webpay.');
+      }
 
-      const randomNum = Math.floor(1000 + Math.random() * 9000);
-      const newReservation: Reservation = {
-        id: String(backendResponse?.id || Date.now()),
-        code: backendResponse?.code || `R-2026-${randomNum}`,
-        guestId: formData.guestId,
-        guestEmail: formData.guestEmail,
-        unitName: selectedUnit ? selectedUnit.name : `Unidad #${formData.unitId}`,
-        checkInDate: formData.checkInDate,
-        checkOutDate: formData.checkOutDate,
-        channel: formData.channel,
-        status: 'CREADA',
-        amount: formData.amount,
-      };
+      let transbankUrl: URL;
+      try {
+        transbankUrl = new URL(url);
+      } catch {
+        throw new Error('El backend devolvió una URL de Webpay no válida.');
+      }
 
-      setReservations((prev) => [newReservation, ...prev]);
-      setIsModalOpen(false);
+      if (transbankUrl.protocol !== 'https:' || transbankUrl.hostname !== 'webpay3gint.transbank.cl') {
+        throw new Error('El backend devolvió una URL de Webpay de integración no válida.');
+      }
 
-      setFormData({
-        guestId: fullName || '',
-        guestEmail: '',
-        unitId: 1,
-        checkInDate: '',
-        checkOutDate: '',
-        channel: 'Web',
-        amount: '$120.000',
-      });
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = transbankUrl.toString();
 
-      alert('¡Reserva creada y guardada en base de datos con éxito!');
+      const tokenInput = document.createElement('input');
+      tokenInput.type = 'hidden';
+      tokenInput.name = 'token_ws';
+      tokenInput.value = token;
+
+      form.appendChild(tokenInput);
+      document.body.appendChild(form);
+      form.submit();
     } catch (err) {
-      alert(parseApiError(err));
+      alert(err instanceof Error ? err.message : parseApiError(err));
     } finally {
       setIsCreating(false);
     }
+
+    
+
+
+
   };
 
   const filteredReservations = reservations.filter((res) => {
@@ -495,7 +497,7 @@ export default function Reservations() {
                   disabled={isCreating}
                   className="px-4 py-2 text-sm font-medium text-white bg-[#CB6D51] hover:bg-[#b85e44] rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {isCreating ? 'Guardando...' : 'Crear Reserva'}
+                  {isCreating ? 'Conectando con Webpay...' : 'Ir a Pagar'}
                 </button>
               </div>
             </form>
