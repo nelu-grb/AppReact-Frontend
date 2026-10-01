@@ -1,43 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { getWebpayPaymentResult, type WebpayPaymentResult } from '../services/webpayService';
+import { confirmWebpayPayment, type WebpayPaymentResult } from '../services/webpayService';
 import { parseApiError } from '../utils/errorHandler';
 import PaymentRejected from './PaymentRejected';
 import PaymentSuccess from './PaymentSuccess';
 
 export default function PaymentResult() {
   const [searchParams] = useSearchParams();
-  const paymentId = searchParams.get('paymentId');
+  const paymentToken = searchParams.get('token_ws') || searchParams.get('paymentId');
+  
   const [result, setResult] = useState<WebpayPaymentResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Evita que React 18 ejecute la confirmación dos veces en modo desarrollo
+  const calledRef = useRef(false);
+
   useEffect(() => {
-    let isActive = true;
+    if (!paymentToken) {
+      setError('Falta la referencia del pago. No se pudo verificar la transacción.');
+      setLoading(false);
+      return;
+    }
+
+    if (calledRef.current) return; // Si ya se ejecutó, no vuelve a llamar
+    calledRef.current = true;
 
     const loadResult = async () => {
-      if (!paymentId) {
-        setError('Falta la referencia del pago. No se pudo verificar la transacción.');
-        setLoading(false);
-        return;
-      }
-
       try {
-        const paymentResult = await getWebpayPaymentResult(paymentId);
-        if (isActive) setResult(paymentResult);
+        const paymentResult = await confirmWebpayPayment(paymentToken);
+        setResult(paymentResult);
       } catch (requestError) {
-        if (isActive) setError(parseApiError(requestError));
+        setError(parseApiError(requestError));
       } finally {
-        if (isActive) setLoading(false);
+        setLoading(false);
       }
     };
 
     void loadResult();
-
-    return () => {
-      isActive = false;
-    };
-  }, [paymentId]);
+  }, [paymentToken]);
 
   if (loading) {
     return (
@@ -57,7 +58,7 @@ export default function PaymentResult() {
           {result?.status === 'PENDING' ? 'Pago en revisión' : 'No se pudo verificar el pago'}
         </h1>
         <p role={error ? 'alert' : undefined} className="mt-3 text-sm text-gray-600">
-          {error ?? 'El backend aún no informa un resultado definitivo. Revisa tus reservas antes de volver a intentar.'}
+          {error ?? 'El token de la transacción ya expiro o no fue encontrado.'}
         </p>
         <Link
           to="/reservations"

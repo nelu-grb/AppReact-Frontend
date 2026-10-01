@@ -9,7 +9,8 @@ import {
   type ReservationRequest,
   type ReservationResponse
 } from '../services/reservationService';
-import { createReservationCheckout } from '../services/webpayService';
+import { initiateWebpayCheckout } from '../services/webpayService';
+import { createReservation } from '../services/reservationService';
 
 export interface Reservation {
   id: string;
@@ -142,7 +143,13 @@ export default function Reservations() {
 
     try {
       setIsCreating(true);
-      const { url, token } = await createReservationCheckout(payload);
+
+      // 1. Crear la reserva en el backend
+      const newReservation = await createReservation(payload);
+
+      // 2. Iniciar el pago en Webpay usando el ID de la reserva creada
+      const { url, token } = await initiateWebpayCheckout(newReservation.id);
+
       if (!url || !token) {
         throw new Error('El backend no devolvió la URL y el token de Webpay.');
       }
@@ -158,6 +165,7 @@ export default function Reservations() {
         throw new Error('El backend devolvió una URL de Webpay de integración no válida.');
       }
 
+      // 3. Redirigir a Transbank
       const form = document.createElement('form');
       form.method = 'POST';
       form.action = transbankUrl.toString();
@@ -175,11 +183,6 @@ export default function Reservations() {
     } finally {
       setIsCreating(false);
     }
-
-    
-
-
-
   };
 
   const filteredReservations = reservations.filter((res) => {
