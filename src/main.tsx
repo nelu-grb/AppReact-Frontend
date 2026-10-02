@@ -10,7 +10,7 @@ export const msalInstance = new PublicClientApplication(msalConfig);
 
 // Inicializar MSAL y procesar la redirección antes de renderizar
 msalInstance.initialize().then(async () => {
-  // 1. Escuchar eventos futuros de inicio de sesión
+  // 1. Escuchar eventos de inicio de sesión
   msalInstance.addEventCallback((event) => {
     if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
       const payload = event.payload as { account?: AccountInfo };
@@ -20,7 +20,7 @@ msalInstance.initialize().then(async () => {
     }
   });
 
-  // 2. Procesar el resultado de la redirección al volver de Microsoft
+  // 2. Procesar el resultado de la redirección solo cuando vuelve de Microsoft
   try {
     const response = await msalInstance.handleRedirectPromise();
     if (response?.account) {
@@ -30,15 +30,7 @@ msalInstance.initialize().then(async () => {
     console.error('Error procesando redirección de MSAL:', err);
   }
 
-  // 3. Mantener la sesión activa si el usuario recarga la página
-  if (!msalInstance.getActiveAccount()) {
-    const accounts = msalInstance.getAllAccounts();
-    if (accounts.length > 0) {
-      msalInstance.setActiveAccount(accounts[0]);
-    }
-  }
-
-  // 4. Montar la aplicación una vez asegurado el estado
+  // 3. Montar la aplicación (ya no forzamos accounts[0] automáticamente)
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>

@@ -7,16 +7,23 @@ export default function Navbar() {
   const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isAuditor } = useUserRole();
 
   const handleLogout = () => {
-    instance.logoutRedirect({
-      postLogoutRedirectUri: '/login',
-    }).catch(console.error);
+    // Obtener la cuenta activa almacenada
+    const activeAccount = instance.getActiveAccount() || instance.getAllAccounts()[0];
+
+    instance
+      .logoutRedirect({
+        account: activeAccount || undefined,
+        logoutHint: activeAccount?.username, // Garantiza eliminar los tokens de esta cuenta
+        postLogoutRedirectUri: `${window.location.origin}/login`, // URL absoluta obligatoria
+      })
+      .catch(console.error);
   };
 
   // Enlaces y visibilidad según rol (RBAC)
   const navLinks = [
     { label: 'Dashboard', path: '/dashboard', show: true },
     { label: 'Reservas', path: '/reservations', show: !isAuditor },
-    { label: 'Catálogo', path: '/catalog', show: isAdmin || isRecepcionista },
+    { label: 'Catálogo', path: '/catalog', show: true },
     { label: 'Reportería', path: '/reports', show: isAdmin },
     { label: 'Auditoría', path: '/audit', show: isAdmin || isAuditor },
   ];

@@ -1,6 +1,6 @@
 import type { Configuration } from "@azure/msal-browser";
 
-// Configuración de MSAL para la autenticación con Azure AD B2C
+// Configuración de MSAL para la autenticación con Azure AD B2C / CIAM
 const redirectUri =
   import.meta.env.VITE_AZURE_REDIRECT_URI || window.location.origin;
 const accessScope =
@@ -11,7 +11,7 @@ export const msalConfig: Configuration = {
   auth: {
     clientId: String(import.meta.env.VITE_AZURE_CLIENT_ID).trim(),
     authority:
-    "https://domnerus1.ciamlogin.com/934f23a0-098f-4b94-81be-bc5360fd4eb4/v2.0",
+      import.meta.env.VITE_AZURE_AUTHORITY,
     redirectUri,
     postLogoutRedirectUri: `${window.location.origin}/login`,
   },
@@ -22,6 +22,6 @@ export const msalConfig: Configuration = {
 
 // Configuración de la solicitud de inicio de sesión
 export const loginRequest = {
-  scopes: ['api://ed8a85ef-f2d4-48c5-a17e-b69abfc4694e/access_as_user'],
-  prompt: 'login',
+  scopes: [accessScope], // Usa la variable dinámica o mantén tu scope fijo
+  prompt: 'select_account', // <--- CAMBIO AQUÍ: Obliga a Microsoft a mostrar el selector de cuentas
 };
