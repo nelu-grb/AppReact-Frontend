@@ -1,29 +1,22 @@
 import { useMsal } from '@azure/msal-react';
 import { NavLink } from 'react-router-dom';
-import { useUserRole } from '../hooks/useUserRole';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const { instance } = useMsal();
-  const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isAuditor } = useUserRole();
+  const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isAuditor} = useAuth();
 
   const handleLogout = () => {
-    // Obtener la cuenta activa almacenada
-    const activeAccount = instance.getActiveAccount() || instance.getAllAccounts()[0];
-
-    instance
-      .logoutRedirect({
-        account: activeAccount || undefined,
-        logoutHint: activeAccount?.username, // Garantiza eliminar los tokens de esta cuenta
-        postLogoutRedirectUri: `${window.location.origin}/login`, // URL absoluta obligatoria
-      })
-      .catch(console.error);
+    instance.logoutRedirect({
+      postLogoutRedirectUri: '/login',
+    }).catch(console.error);
   };
 
   // Enlaces y visibilidad según rol (RBAC)
   const navLinks = [
     { label: 'Dashboard', path: '/dashboard', show: true },
     { label: 'Reservas', path: '/reservations', show: !isAuditor },
-    { label: 'Catálogo', path: '/catalog', show: true },
+    { label: 'Catálogo', path: '/catalog', show: isAdmin || isRecepcionista },
     { label: 'Reportería', path: '/reports', show: isAdmin },
     { label: 'Auditoría', path: '/audit', show: isAdmin || isAuditor },
   ];
@@ -34,9 +27,9 @@ export default function Navbar() {
       <div className="flex items-center gap-8">
         <div className="flex items-center gap-2.5 font-bold text-lg tracking-wide">
           <span className="p-1.5 bg-[#CB6D51] rounded text-white text-xs font-black leading-none">
-            RH
+            AS
           </span>
-          <span className="text-white text-base">Red Hospedaje</span>
+          <span className="text-white text-base">AndesStay</span>
         </div>
 
         <nav className="flex items-center gap-1.5">

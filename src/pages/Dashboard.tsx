@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useUserRole } from '../hooks/useUserRole';
+import { useAuth } from '../context/AuthContext';
+import {useEffect} from 'react';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 
 interface ChartPoint {
   time: string;
@@ -30,53 +34,65 @@ interface ActivityLog {
 }
 
 export default function Dashboard() {
-  const { fullName, isAdmin, isRecepcionista, isHuesped, isAuditor } = useUserRole();
+  const { fullName, primaryRole, isAdmin, isRecepcionista, isHuesped } = useAuth();
   const [activeRange, setActiveRange] = useState<'hoy' | 'semana' | 'mes'>('hoy');
   const [hoveredBar, setHoveredBar] = useState<ChartPoint | null>(null);
 
-  const chartData: ChartPoint[] = [
-    { time: '08h', value: 40 },
-    { time: '09h', value: 65 },
-    { time: '10h', value: 45 },
-    { time: '11h', value: 55 },
-    { time: '12h', value: 70 },
-    { time: '13h', value: 65 },
-    { time: '14h', value: 85 },
-    { time: '15h', value: 75 },
-    { time: '16h', value: 100, isPeak: true },
-    { time: '17h', value: 60 },
-    { time: '18h', value: 45 },
-    { time: '19h', value: 30 },
-  ];
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  const [channelData, setChannelData] = useState<ChannelStat[]>([]);
+  const [propertiesData, setPropertiesData] = useState<PropertyOccupancy[]>([]);
+  const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
 
-  const channelData: ChannelStat[] = [
-    { name: 'Web', count: 14, percent: '70%' },
-    { name: 'Instagram', count: 7, percent: '35%' },
-    { name: 'WhatsApp', count: 6, percent: '30%' },
-    { name: 'Directo', count: 3, percent: '15%' },
-  ];
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const propertiesData: PropertyOccupancy[] = [
-    { name: 'Los Boldos', location: 'Pucón', percent: 100 },
-    { name: 'Todos Los Santos', location: 'Petrohué', percent: 100 },
-    { name: 'Torres del Paine', location: 'Puerto Natales', percent: 93 },
-    { name: 'Atacama Lodge', location: 'San Pedro de Atacama', percent: 92 },
-    { name: 'Patagonia Sur', location: 'Puerto Natales', percent: 98 },
-  ];
 
-  const recentActivity: ActivityLog[] = [
-    { user: 'Carlos Núñez', action: 'realizó check-in', res: 'R-2026-0891', time: '08:02 a. m.', prop: 'Patagonia Sur', color: 'bg-[#CB6D51]' },
-    { user: 'Ana Beltrán', action: 'realizó check-in', res: 'R-2026-0892', time: '08:17 a. m.', prop: 'Torres del Paine', color: 'bg-[#CB6D51]' },
-    { user: 'Luis Pino', action: 'solicitó check-out', res: 'R-2026-0893', time: '09:05 a. m.', prop: 'El Roble', color: 'bg-[#EAB308]' },
-    { user: 'María José Lagos', action: 'confirmó reserva', res: 'R-2026-0894', time: '09:31 a. m.', prop: 'Atacama Lodge', color: 'bg-[#10B981]' },
-  ];
+  // useEffect)
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+
+
+        const [resAudit, resCatalog, resMetrics] = await Promise.all([
+          fetch(`${API_BASE_URL}/audit`),
+          fetch(`${API_BASE_URL}/catalog/occupancy`),
+          fetch(`${API_BASE_URL}/reservations/metrics`),
+        ]);
+
+        if (resAudit.ok) setRecentActivity(await resAudit.json());
+        if (resCatalog.ok) setPropertiesData(await resCatalog.json());
+        
+        if (resMetrics.ok) {
+          const metrics = await resMetrics.json();
+          setChartData(metrics.hourlyDistribution);
+          setChannelData(metrics.channels);
+        }
+      } catch (error) {
+        console.error('Error al cargar datos del Dashboard:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []); // Arreglo vacío para que se ejecute solo 1 vez al cargar la pantalla
+
+  // 3. Estado de carga antes de renderizar JSX
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-gray-500 animate-pulse">Cargando métricas en tiempo real...</p>
+      </div>
+    );
+  }
+
 
   if (isHuesped) {
     return (
-      <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-[#F4F6F6] space-y-6 font-sans">
-        <div className="bg-[#1A423B] rounded-2xl p-6 md:p-8 text-white shadow-sm relative overflow-hidden">
+      <div className="flex-1 p-5 md:p-8 xl:p-10 overflow-y-auto bg-[#F4F6F6] space-y-6 font-sans">
+        <div className="bg-[#1A423B] rounded-2xl p-6 md:p-9 text-white shadow-md relative overflow-hidden">
           <div className="relative z-10">
-            <h1 className="text-2xl font-bold mb-2">¡Hola, {fullName || 'Huésped'}! </h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-3">¡Hola, {fullName || 'Huésped'}! </h1>
             <p className="text-emerald-100 text-sm max-w-xl">
               Bienvenido a tu panel de AndesStay. Gestiona tus estadías activas o explora nuevas propiedades disponibles para tus próximas vacaciones.
             </p>
@@ -97,9 +113,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-xl border border-gray-200/90 shadow-2xs">
-            <h2 className="font-bold text-gray-800 text-sm mb-3">Próxima Estadía</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
+          <div className="bg-white p-6 rounded-2xl border border-gray-200/90 shadow-sm">
+            <h2 className="font-bold text-gray-800 text-base mb-4">Próxima Estadía</h2>
             <div className="p-4 bg-emerald-50/60 border border-emerald-100 rounded-lg">
               <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Reserva Confirmada</span>
               <p className="font-semibold text-gray-900 text-sm mt-1">Cabaña Bosque Nativo #4 — Pucón</p>
@@ -107,9 +123,9 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-gray-200/90 shadow-2xs flex flex-col justify-between">
+          <div className="bg-white p-6 rounded-2xl border border-gray-200/90 shadow-sm flex flex-col justify-between">
             <div>
-              <h2 className="font-bold text-gray-800 text-sm mb-1">Soporte al Huésped</h2>
+              <h2 className="font-bold text-gray-800 text-base mb-1">Soporte al Huésped</h2>
               <p className="text-xs text-gray-500">¿Necesitas ayuda adicional con tus fechas o equipaje?</p>
             </div>
             <a
@@ -127,14 +143,13 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-[#F4F6F6] font-sans">
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="flex-1 p-5 md:p-8 xl:p-10 overflow-y-auto bg-[#F4F6F6] font-sans">
+      <div className="mb-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 tracking-tight">Panel de Control — {fullName}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">Panel de Control — {fullName}</h1>
+          <p className="text-sm text-gray-500 mt-1">
             {isAdmin && 'Vista Administrador: Consolidado general y rendimiento operacional de AndesStay.'}
             {isRecepcionista && 'Vista Recepción: Gestión en tiempo real de entradas, salidas y limpieza.'}
-            {isAuditor && 'Vista Auditoría: Registro de actividad general e indicadores clave de ocupación.'}
           </p>
         </div>
 
@@ -157,50 +172,50 @@ export default function Dashboard() {
           </div>
 
           <span className="text-xs font-bold px-3 py-1.5 bg-[#1A423B] text-white rounded-lg shadow-2xs">
-            Rol: {isAdmin ? 'Admin' : isRecepcionista ? 'Recepcionista' : 'Auditor'}
+            Rol: {primaryRole}
           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
-        <div className="bg-[#1A423B] rounded-xl p-5 shadow-2xs text-white flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-emerald-200 uppercase tracking-wider">Ocupación Red</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold tracking-tight">77%</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5 mb-7">
+        <div className="bg-[#1A423B] rounded-2xl p-6 shadow-sm text-white flex flex-col justify-between">
+          <h3 className="text-xs font-bold text-emerald-200 uppercase tracking-wider">Ocupación Red</h3>
+          <div className="my-3">
+            <span className="text-4xl font-extrabold tracking-tight">77%</span>
           </div>
           <p className="text-xs text-emerald-100/80">134 de 174 habitaciones ocupadas</p>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-5 shadow-2xs flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Check-ins Activos</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-gray-900 tracking-tight">6</span>
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Check-ins Activos</h3>
+          <div className="my-3">
+            <span className="text-4xl font-extrabold text-gray-900 tracking-tight">6</span>
           </div>
           <p className="text-xs text-gray-500">Huéspedes actualmente en tránsito</p>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-5 shadow-2xs flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sin Confirmar</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-gray-900 tracking-tight">3</span>
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Sin Confirmar</h3>
+          <div className="my-3">
+            <span className="text-4xl font-extrabold text-gray-900 tracking-tight">3</span>
           </div>
           <p className="text-xs text-gray-500">Pendientes de pago o revisión</p>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-5 shadow-2xs flex flex-col justify-between">
-          <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Housekeeping</h3>
-          <div className="my-2">
-            <span className="text-3xl font-extrabold text-gray-900 tracking-tight">25</span>
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Housekeeping</h3>
+          <div className="my-3">
+            <span className="text-4xl font-extrabold text-gray-900 tracking-tight">25</span>
           </div>
           <p className="text-xs text-gray-500">Unidades en cola de mantenimiento</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs lg:col-span-2 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6 mb-7">
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 md:p-7 shadow-sm lg:col-span-2 flex flex-col justify-between">
+          <div className="flex flex-wrap justify-between items-start gap-3 mb-6">
             <div>
-              <h3 className="font-bold text-gray-900 text-sm">Distribución de reservas por hora</h3>
+              <h3 className="font-bold text-gray-900 text-base">Distribución de reservas por hora</h3>
               <p className="text-xs text-gray-500">Monitoreo de la demanda en el periodo seleccionado</p>
             </div>
             <span className="bg-red-50 text-[#CB6D51] border border-red-100 text-[11px] px-2.5 py-1 rounded-md font-semibold">
@@ -234,8 +249,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs">
-          <h3 className="font-bold text-gray-900 text-sm mb-1">Origen de reservas</h3>
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 md:p-7 shadow-sm">
+          <h3 className="font-bold text-gray-900 text-base mb-1">Origen de reservas</h3>
           <p className="text-xs text-gray-500 mb-6">Desglose acumulado por canal de adquisición</p>
           <div className="space-y-4">
             {channelData.map((ch, idx) => (
@@ -251,11 +266,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6">
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 md:p-7 shadow-sm lg:col-span-2">
           <div className="flex justify-between items-center mb-5">
             <div>
-              <h3 className="font-bold text-gray-900 text-sm">Ocupación por propiedad</h3>
+              <h3 className="font-bold text-gray-900 text-base">Ocupación por propiedad</h3>
               <p className="text-xs text-gray-500">Unidades de la red con mayor demanda</p>
             </div>
             <span className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">Sincronizado</span>
@@ -264,7 +279,7 @@ export default function Dashboard() {
           <div className="space-y-4">
             {propertiesData.map((prop, idx) => (
               <div key={idx} className="flex items-center text-xs">
-                <div className="w-44 shrink-0">
+                <div className="w-32 sm:w-44 shrink-0">
                   <p className="font-bold text-gray-900">{prop.name}</p>
                   <p className="text-[10px] text-gray-400">{prop.location}</p>
                 </div>
@@ -277,9 +292,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200/90 rounded-xl p-6 shadow-2xs flex flex-col justify-between">
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-6 md:p-7 shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="font-bold text-gray-900 text-sm mb-1">Actividad reciente</h3>
+            <h3 className="font-bold text-gray-900 text-base mb-1">Actividad reciente</h3>
             <p className="text-xs text-gray-500 mb-5">Últimos eventos registrados en la plataforma</p>
             <ul className="space-y-3.5">
               {recentActivity.map((act, idx) => (

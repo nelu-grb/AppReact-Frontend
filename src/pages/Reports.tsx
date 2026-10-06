@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUserRole } from '../hooks/useUserRole';
+import { useAuth } from '../context/AuthContext';
 
 interface TopUnit {
   id: string;
@@ -14,7 +14,7 @@ interface TopUnit {
 type TimeRange = 'last24h' | 'last7d' | 'last30d';
 
 export default function Reports() {
-  const { isAdmin, isAuditor } = useUserRole();
+  const { isAdmin, isAuditor } = useAuth();
   const [timeRange, setTimeRange] = useState<TimeRange>('last24h');
   const [isExporting, setIsExporting] = useState<boolean>(false);
 

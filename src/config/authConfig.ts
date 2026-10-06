@@ -1,27 +1,45 @@
-import type { Configuration } from "@azure/msal-browser";
+import type { Configuration, RedirectRequest } from "@azure/msal-browser";
 
-// Configuración de MSAL para la autenticación con Azure AD B2C / CIAM
-const redirectUri =
-  import.meta.env.VITE_AZURE_REDIRECT_URI || window.location.origin;
-const accessScope =
-  import.meta.env.VITE_AZURE_SCOPE ||
-  `${import.meta.env.VITE_AZURE_CLIENT_ID}/access_as_user`;
+const clientId = import.meta.env.VITE_AZURE_CLIENT_ID;
+const tenantId = import.meta.env.VITE_AZURE_TENANT_ID;
+const subdomain = "andesstay";
+const authority = `https://${subdomain}.ciamlogin.com/${tenantId}/v2.0/`;
+const redirectUri = window.location.origin;
+
+const scopes = [
+  "api://3576de9b-8f84-48c4-b112-5a793bc04abc/access_as_user",
+];
 
 export const msalConfig: Configuration = {
   auth: {
-    clientId: String(import.meta.env.VITE_AZURE_CLIENT_ID).trim(),
-    authority:
-      import.meta.env.VITE_AZURE_AUTHORITY,
+    clientId,
+    authority,                                                                          
     redirectUri,
     postLogoutRedirectUri: `${window.location.origin}/login`,
   },
   cache: {
-    cacheLocation: 'sessionStorage',
+    cacheLocation: "localStorage",
+  },
+  system: {
+    loggerOptions: {
+      loggerCallback: (logLevel, message) => {
+        console.log(`[MSAL] ${logLevel}: ${message}`);
+      },
+      piiLoggingEnabled: false,
+    },
   },
 };
 
-// Configuración de la solicitud de inicio de sesión
-export const loginRequest = {
-  scopes: [accessScope], // Usa la variable dinámica o mantén tu scope fijo
-  prompt: 'select_account', // <--- CAMBIO AQUÍ: Obliga a Microsoft a mostrar el selector de cuentas
+// Configuración de login que fuerza el selector de cuentas
+export const loginRequest: RedirectRequest = {
+  scopes,
+  prompt: "select_account", // iniciar sesion, da la opcion de cuentas ya logueadas
+};
+
+export const silentRequest: RedirectRequest = {
+  scopes,
+};
+
+export const tokenRequest: RedirectRequest = {
+  scopes,
 };

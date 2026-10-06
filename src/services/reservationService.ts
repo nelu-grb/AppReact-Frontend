@@ -1,7 +1,6 @@
 import apiClient from './apiClient';
 
 export interface ReservationRequest {
-  guestId?: string;
   guestId: string;
   guestEmail: string;
   unitId: number; // Estricto como número para coincidir con el Long/Integer de Java
@@ -23,7 +22,6 @@ export type ReservationStatus =
 export interface ReservationResponse {
   id: number;
   code: string;
-  guestId?: string;
   guestId: string;
   guestEmail: string;
   unitId: number;

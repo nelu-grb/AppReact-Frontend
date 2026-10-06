@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUserRole } from '../hooks/useUserRole';
+import {useAuth} from '../context/AuthContext';
 
 type AuditAction = 'CREACIÓN' | 'CONFIRMACIÓN' | 'CHECK-IN' | 'CHECK-OUT' | 'CANCELACIÓN';
 
@@ -98,7 +98,7 @@ const INITIAL_EVENTS: AuditEvent[] = [
 ];
 
 export default function Audit() {
-  const { isAdmin, isAuditor } = useUserRole();
+  const { isAdmin, isAuditor } = useAuth();
   const [filterAction, setFilterAction] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);

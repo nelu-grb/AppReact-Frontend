@@ -18,37 +18,33 @@ apiClient.interceptors.request.use(
 
     if (!account) {
       const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
+      if (accounts.length === 1) {
         account = accounts[0];
         msalInstance.setActiveAccount(account);
+      } else if (accounts.length > 1) {
+        return Promise.reject(
+          new Error('No se puede determinar la cuenta activa porque hay varias cuentas de Microsoft.')
+        );
       }
     }
 
     if (account) {
       try {
-        // Intenta adquirir el Access Token en silencio
         const response = await msalInstance.acquireTokenSilent({
           scopes: API_CONFIG.scopes,
           account,
         });
 
-        console.log('SCOPES REQUESTED:', API_CONFIG.scopes);
-        console.log('SCOPES IN RESPONSE:', response.scopes);
-        console.log('FULL TOKEN:', response.accessToken);
-        
-        // Inyecta el Bearer Token en la cabecera
         config.headers.set('Authorization', `Bearer ${response.accessToken}`);
-        console.log(`[API Client] Token inyectado para ${account.username}: ${response.accessToken.substring(0, 10)}...`);
       } catch (error) {
-        // Si el token expiró y no se puede renovar en silencio, requiere interacción
         if (error instanceof InteractionRequiredAuthError) {
           await msalInstance.acquireTokenRedirect({
             scopes: API_CONFIG.scopes,
           });
           return Promise.reject(new Error('Se requiere interacción para adquirir el token. Redirigiendo a login...'));
-        } else {
-          console.error('Error al adquirir token con MSAL:', error);
         }
+        
+        return Promise.reject(error);
       }
     }
 
@@ -64,15 +60,12 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
 
     if (status === 401) {
-      console.warn('Sesión expirada o token no autorizado (401). Redirigiendo a login...');
-      // Limpia sesión activa y redirige
-      //await msalInstance.logoutRedirect({
-      //postLogoutRedirectUri: `${window.location.origin}/login`, // Usa la URL absoluta dinámica 
-        console.error('Fallo de conexión o autorización con el backend:', error);
-      }
+      // await msalInstance.logoutRedirect({
+      //   postLogoutRedirectUri: `${window.location.origin}/login`,
+      // });
+    }
+    
     if (status === 403) {
-      console.warn('Acceso denegado (403): Permisos insuficientes para este recurso.');
-      // Opcional: Redirigir al dashboard si intenta acceder a un endpoint fuera de su rol
       window.location.href = '/dashboard';
     }
 

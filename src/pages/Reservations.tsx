@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useUserRole } from '../hooks/useUserRole';
+import { useAuth } from '../context/AuthContext';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
@@ -34,7 +34,7 @@ const AVAILABLE_UNITS = [
 ];
 
 export default function Reservations() {
-  const { fullName, isAdmin, isRecepcionista } = useUserRole();
+  const { fullName, isAdmin, isRecepcionista } = useAuth();
   const canManageStatus = isAdmin || isRecepcionista;
 
   // Estados globales de consulta

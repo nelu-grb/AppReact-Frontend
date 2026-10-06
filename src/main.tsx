@@ -5,6 +5,8 @@ import { MsalProvider } from '@azure/msal-react';
 import App from './App';    
 import './index.css';
 import { msalConfig } from './config/authConfig';
+// 1. IMPORTAMOS EL NUEVO CONTEXTO AQUÍ:
+import { AuthProvider } from './context/AuthContext'; 
 
 export const msalInstance = new PublicClientApplication(msalConfig);
 
@@ -20,11 +22,18 @@ msalInstance.initialize().then(async () => {
     }
   });
 
+  
+
   // 2. Procesar el resultado de la redirección solo cuando vuelve de Microsoft
   try {
     const response = await msalInstance.handleRedirectPromise();
     if (response?.account) {
       msalInstance.setActiveAccount(response.account);
+    } else if (!msalInstance.getActiveAccount()) {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length === 1) {
+        msalInstance.setActiveAccount(accounts[0]);
+      }
     }
   } catch (err) {
     console.error('Error procesando redirección de MSAL:', err);
@@ -34,7 +43,10 @@ msalInstance.initialize().then(async () => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>
-        <App />
+        {/* 2. ENVOLVEMOS <App /> CON NUESTRO AUTHPROVIDER */}
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </MsalProvider>
     </React.StrictMode>
   );

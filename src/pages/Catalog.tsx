@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useUserRole } from '../hooks/useUserRole';
+import { useAuth } from '../context/AuthContext';
 
 export type PropertyType = 'Hostal' | 'Cabaña' | 'Lodge';
 
@@ -29,7 +29,7 @@ const REGIONS_LIST = ['Todas', 'Región RM', 'Región V', 'Región IX', 'Región
 const TYPES_LIST = ['Todos', 'Hostal', 'Cabaña', 'Lodge'];
 
 export default function Catalog() {
-  const { isAdmin, isHuesped } = useUserRole();
+  const { isAdmin, isHuesped } = useAuth();
   const [properties, setProperties] = useState<Property[]>(INITIAL_PROPERTIES);
   const [selectedType, setSelectedType] = useState<string>('Todos');
   const [selectedRegion, setSelectedRegion] = useState<string>('Todas');
