@@ -1,9 +1,8 @@
-import { createContext, useContext, type ReactNode, useEffect, useState} from 'react';
+import { createContext, useContext, type ReactNode, useEffect, useState } from 'react';
 import { useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
 
-
-// 1. Definimos los tipos de datos que devolverá el contexto
+// 1. Definición de los tipos de datos que provee el contexto
 interface AuthContextType {
   fullName: string;
   initials: string;
@@ -18,40 +17,39 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// 2. Creamos el Provider
+// 2. Componente Provider principal
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const { accounts, instance, inProgress } = useMsal();
   
-  // 1. NUEVO: Un estado para controlar si estamos recuperando los roles silenciosamente
+  // Estado para controlar la recuperación silenciosa de permisos
   const [renewalState, setRenewalState] = useState<'idle' | 'renewing' | 'done'>('idle');
 
+  // Identificación de la cuenta activa
   const activeAccount = instance.getActiveAccount() ?? (accounts.length > 0 ? accounts[0] : null);
   
   const idTokenClaims = activeAccount?.idTokenClaims as any;
-  // Extraemos específicamente los roles para vigilar si Microsoft los borró
   const roles = idTokenClaims?.roles; 
 
   useEffect(() => {
     const checkAndRenewRoles = async () => {
+      // Si MSAL está ocupado procesando algo, esperamos
       if (inProgress !== InteractionStatus.None) return;
 
-      if (!activeAccount) {
-        instance.loginRedirect();
-        return;
-      }
+      // SI NO HAY CUENTA: No hacemos nada y dejamos que React Router muestre la vista de /login
+      if (!activeAccount) return;
 
-      // 2. LA MAGIA: Si hay cuenta, pero faltan los roles, abrimos un iframe invisible para recuperarlos
+      // Si hay una cuenta pero faltan los roles, los recuperamos silenciosamente
       if (roles === undefined && renewalState === 'idle') {
         setRenewalState('renewing');
         console.log("Memoria de roles vacía. Recuperando permisos silenciosamente...");
         try {
           await instance.acquireTokenSilent({
-            scopes: ["openid", "profile"], // Puedes añadir tu client_id aquí si usas Access Tokens
+            scopes: ["openid", "profile"],
             account: activeAccount,
-            forceRefresh: true // Obliga a Microsoft a darnos un token fresco con los roles
+            forceRefresh: true // Solicita un token actualizado con los roles
           });
         } catch (error) {
-          console.warn("Fallo la renovación invisible. Forzando login...", error);
+          console.warn("Falló la renovación invisible. Redirigiendo a inicio de sesión...", error);
           instance.loginRedirect();
         } finally {
           setRenewalState('done');
@@ -62,28 +60,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     checkAndRenewRoles();
   }, [inProgress, activeAccount, roles, renewalState, instance]);
 
-  // 3. EL CANDADO PERFECTO
-  // Solo se abre si MSAL terminó, SI hay cuenta, y SI no estamos en medio de recuperar los roles
-  const isWorking = 
-    inProgress !== InteractionStatus.None || 
-    renewalState === 'renewing' || 
-    (roles === undefined && renewalState === 'idle');
+  // Se muestra la pantalla de carga ÚNICAMENTE si hay una cuenta activa y se están validando sus roles
+  const isCheckingRoles = 
+    activeAccount !== null && (
+      inProgress !== InteractionStatus.None || 
+      renewalState === 'renewing' || 
+      (roles === undefined && renewalState === 'idle')
+    );
 
-  if (isWorking || !activeAccount) {
+  if (isCheckingRoles) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-gray-50">
-        <span className="text-xl font-semibold text-[#1b4332]">
+      <div className="flex h-screen w-full items-center justify-center bg-[#F4F6F9] font-sans">
+        <span className="text-lg font-semibold text-gray-700">
           {renewalState === 'renewing' ? 'Recuperando permisos...' : 'Verificando sesión...'}
         </span>
       </div>
     );
   }
 
-  // 4. Tu lógica de extracción (Solo llega aquí si los roles ya están asegurados)
-  const finalRoles: string[] = roles || [];
-  const fullName: string = activeAccount.name || idTokenClaims?.name || 'Usuario';
+  // 3. Extracción y normalización de roles (con valores por defecto si no hay sesión)
+  const finalRoles: string[] = activeAccount ? (roles || []) : [];
+  const fullName: string = activeAccount ? (activeAccount.name || idTokenClaims?.name || 'Usuario') : '';
 
-  const nameParts = fullName.trim().split(' ');
+  const nameParts = fullName.trim().split(' ').filter(Boolean);
   const initials =
     nameParts.length >= 2
       ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
@@ -119,7 +118,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     </AuthContext.Provider>
   );
 };
-// 4. Exportamos el hook para usarlo fácilmente
+
+// Hook personalizado para usar el contexto de autenticación
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth debe usarse dentro de un AuthProvider');
