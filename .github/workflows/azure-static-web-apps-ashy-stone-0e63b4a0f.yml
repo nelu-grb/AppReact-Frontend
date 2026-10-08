@@ -41,7 +41,7 @@ jobs:
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "dist" # Prebuilt Vite output directory
           api_location: "" # Api source code path - optional
-          output_location: "" # No additional build output when uploading dist directly
+          output_location: "" # No additional build output when uploading dist directly test
           skip_app_build: true
           ###### End of Repository/Build Configurations ######
 
