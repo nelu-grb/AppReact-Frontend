@@ -10,7 +10,7 @@ import Reservations from './pages/Reservations';
 import Catalog from './pages/Catalog';
 import Reports from './pages/Reports';
 import Audit from './pages/Audit';
-
+import PaymentResult from './pages/PaymentResult'; // <-- Importamos la nueva página
 
 function ProtectedRoute({ 
   allowedRoles 
@@ -57,8 +57,13 @@ export default function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
         />
 
-        {/* Todas las rutas privadas usando tu componente Layout central */}
+        {/* Rutas privadas */}
         <Route element={<ProtectedRoute />}>
+          
+          {/* Ruta de pago: Fuera del Layout para que ocupe pantalla completa sin menús laterales */}
+          <Route path="/payment-result" element={<PaymentResult />} />
+
+          {/* Rutas con el Layout central (Sidebar, Navbar, etc.) */}
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             
