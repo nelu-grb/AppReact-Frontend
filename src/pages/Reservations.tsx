@@ -5,12 +5,16 @@ import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
 import { 
   getReservations, 
+  createReservation,
   updateReservationStatus,
   type ReservationRequest,
   type ReservationResponse
 } from '../services/reservationService';
 import { initiateWebpayCheckout } from '../services/webpayService';
-import { createReservation } from '../services/reservationService';
+import apiClient from '../services/apiClient';
+
+import { API_ENDPOINTS } from '../config/apiConfig';
+
 
 export interface Reservation {
   id: string;
@@ -25,12 +29,6 @@ export interface Reservation {
   amount: string;
 }
 
-const AVAILABLE_UNITS = [
-  { id: 1, name: 'Suite Andes', location: 'Habitación 301' },
-  { id: 2, name: 'Doble Superior', location: 'Habitación 204' },
-  { id: 3, name: 'Suite Andes', location: 'Habitación 302' },
-  { id: 4, name: 'Doble Superior', location: 'Habitación 202' },
-];
 
 const getInitials = (name: string) => {
   if (!name) return '??';
@@ -39,8 +37,30 @@ const getInitials = (name: string) => {
   return name.substring(0, 2).toUpperCase();
 };
 
+const normalizeStatus = (status: string) =>
+  status.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+const getDateKey = (value: string) => {
+  // Las fechas YYYY-MM-DD se mantienen como fecha local para evitar cambios por zona horaria.
+  const dateOnly = /^(\d{4}-\d{2}-\d{2})/.exec(value)?.[1];
+  if (dateOnly) {
+    const parsedDate = new Date(`${dateOnly}T00:00:00Z`);
+    return Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateOnly
+      ? null
+      : dateOnly;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function Reservations() {
-  const { fullName, isAdmin, isRecepcionista } = useAuth();
+  const { fullName, isAdmin, isRecepcionista, isHuesped } = useAuth();
   const canManageStatus = isAdmin || isRecepcionista;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -48,6 +68,7 @@ export default function Reservations() {
   const [error, setError] = useState<string | null>(null);
   
   const [updatingReservationId, setUpdatingReservationId] = useState<string | null>(null);
+  const [payingReservationId, setPayingReservationId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -55,6 +76,9 @@ export default function Reservations() {
   
   // Estado crucial para que funcione el botón
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+
+  const [availableUnits, setAvailableUnits] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     guestId: fullName || '',
@@ -66,36 +90,44 @@ export default function Reservations() {
     amount: '$120.000',
   });
 
-  const fetchReservations = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getReservations();
-      
-      if (Array.isArray(data)) {
-        const mapped: Reservation[] = data.map((item: ReservationResponse) => {
-          const matchedUnit = AVAILABLE_UNITS.find((u) => u.id === Number(item.unitId));
-          return {
-            id: String(item.id || item.code || Date.now()),
-            code: item.code || `AS-${item.id || Math.floor(1000 + Math.random() * 9000)}`,
-            guestId: item.guestId || 'Huésped',
-            guestEmail: item.guestEmail || 'correo@dominio.com',
-            unitName: item.unitName || matchedUnit?.name || `Unidad #${item.unitId}`,
-            checkInDate: item.startDate,
-            checkOutDate: item.endDate,
-            channel: (item.channel as Reservation['channel']) || 'Directa',
-            status: item.status || 'CREADA',
-            amount: String(item.totalAmount ?? 0),
-          };
-        });
-        setReservations(mapped);
-      }
-    } catch (err) {
-      setError(parseApiError(err));
-    } finally {
-      setLoading(false);
+ const fetchReservations = useCallback(async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    const data = await getReservations();
+
+    if (Array.isArray(data)) {
+      const mapped: Reservation[] = data.map((item: ReservationResponse) => {
+        // Extraemos el ID numérico/string de la reserva y del catálogo flexiblemente
+        const resUnitId = String(item.unitId ?? item.unit?.id ?? '');
+
+        // Buscamos coincidencia en el catálogo disponible
+        const matchedUnit = availableUnits.find(
+          (u: any) => String(u.unitId ?? u.id) === resUnitId
+        );
+
+        return {
+          id: String(item.id || item.code || Date.now()),
+          code: item.code || `AS-${item.id || Math.floor(1000 + Math.random() * 9000)}`,
+          guestId: item.guestId || 'Huésped',
+          guestEmail: item.guestEmail || 'correo@dominio.com',
+          // Prioridad: 1. unitName directo, 2. Nombre desde catálogo matchedUnit, 3. Fallback
+          unitName: item.unitName || matchedUnit?.name || (resUnitId ? `Unidad #${resUnitId}` : 'Sin Asignar'),
+          checkInDate: item.startDate,
+          checkOutDate: item.endDate,
+          channel: (item.channel as Reservation['channel']) || 'Directa',
+          status: item.status || 'CREADA',
+          amount: String(item.totalAmount ?? 0),
+        };
+      });
+      setReservations(mapped);
     }
-  }, []);
+  } catch (err) {
+    setError(parseApiError(err));
+  } finally {
+    setLoading(false);
+  }
+}, [availableUnits]); 
 
   useEffect(() => {
     fetchReservations();
@@ -112,6 +144,38 @@ export default function Reservations() {
       alert(parseApiError(err));
     } finally {
       setUpdatingReservationId(null);
+    }
+  };
+
+  const handlePayReservation = async (reservationId: string) => {
+    try {
+      setPayingReservationId(reservationId);
+
+      const { url, token } = await initiateWebpayCheckout(reservationId);
+      if (!url || !token) {
+        throw new Error('El backend no devolvió la URL y el token de Webpay.');
+      }
+
+      const paymentUrl = new URL(url);
+      if (paymentUrl.protocol !== 'https:' && paymentUrl.protocol !== 'http:') {
+        throw new Error('El backend devolvió una URL de pago no válida.');
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = paymentUrl.toString();
+
+      const tokenInput = document.createElement('input');
+      tokenInput.type = 'hidden';
+      tokenInput.name = 'token_ws';
+      tokenInput.value = token;
+
+      form.appendChild(tokenInput);
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : parseApiError(err));
+      setPayingReservationId(null);
     }
   };
 
@@ -143,23 +207,9 @@ export default function Reservations() {
 
     try {
       setIsCreating(true);
-      const newReservation = await createReservation(payload);
-      const { url, token } = await initiateWebpayCheckout(newReservation.id);
-      if (!url || !token) throw new Error('El backend no devolvió la URL y el token de Webpay.');
-
-      const transbankUrl = new URL(url);
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = transbankUrl.toString();
-
-      const tokenInput = document.createElement('input');
-      tokenInput.type = 'hidden';
-      tokenInput.name = 'token_ws';
-      tokenInput.value = token;
-
-      form.appendChild(tokenInput);
-      document.body.appendChild(form);
-      form.submit();
+      await createReservation(payload);
+      setIsModalOpen(false);
+      await fetchReservations();
     } catch (err) {
       alert(err instanceof Error ? err.message : parseApiError(err));
     } finally {
@@ -178,16 +228,58 @@ export default function Reservations() {
     });
   }, [reservations, statusFilter, searchQuery]);
 
-  const stats = useMemo(() => {
-    const confirmadas = reservations.filter(r => r.status === 'CONFIRMADA' || r.status === 'EN_ESTADÍA');
-    const llegadas = reservations.filter(r => r.status === 'CREADA' || r.status === 'CHECKIN_PENDIENTE');
-    const totalIngresos = confirmadas.reduce((acc, curr) => acc + Number(cleanCLP(curr.amount)), 0);
-    
+  const metrics = useMemo(() => {
+    const now = new Date();
+    const todayKey = getDateKey(
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    );
+    const confirmedReservations = reservations.filter(
+      (reservation) => normalizeStatus(reservation.status) === 'CONFIRMADA'
+    );
+
+    // Las fechas visibles y el importe se presentan según la configuración local del proyecto (Chile/CLP).
+    const monthLabel = new Intl.DateTimeFormat('es-CL', {
+      month: 'long',
+      year: 'numeric',
+    }).format(now);
+    const todayLabel = new Intl.DateTimeFormat('es-CL', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(now);
+
+    // Calcula noches usando las fechas de entrada/salida; cada reserva se cuenta solo si ambas son válidas.
+    const confirmedNights = confirmedReservations.reduce((total, reservation) => {
+      const checkInKey = getDateKey(reservation.checkInDate);
+      const checkOutKey = getDateKey(reservation.checkOutDate);
+      if (!checkInKey || !checkOutKey) return total;
+
+      const checkIn = Date.parse(`${checkInKey}T00:00:00Z`);
+      const checkOut = Date.parse(`${checkOutKey}T00:00:00Z`);
+      return checkOut > checkIn
+        ? total + Math.round((checkOut - checkIn) / (24 * 60 * 60 * 1000))
+        : total;
+    }, 0);
+
+    const totalRevenue = confirmedReservations.reduce(
+      (total, reservation) => total + cleanCLP(reservation.amount),
+      0
+    );
+
+
     return {
       total: reservations.length,
-      confirmadas: confirmadas.length,
-      llegadasHoy: llegadas.length,
-      ingresosTotales: totalIngresos
+      confirmed: confirmedReservations.length,
+      confirmedPercentage: reservations.length
+        ? Math.round((confirmedReservations.length / reservations.length) * 100)
+        : 0,
+      arrivalsToday: reservations.filter(
+        (reservation) => getDateKey(reservation.checkInDate) === todayKey
+      ).length,
+      monthLabel: `${monthLabel.charAt(0).toLocaleUpperCase('es-CL')}${monthLabel.slice(1)}`,
+      todayLabel: `${todayLabel.charAt(0).toLocaleUpperCase('es-CL')}${todayLabel.slice(1)}`,
+      totalRevenue,
+      confirmedNights,
     };
   }, [reservations]);
 
@@ -202,6 +294,52 @@ export default function Reservations() {
       default: return 'bg-gray-100 text-gray-600';
     }
   };
+
+
+  // 2. Traer las cabañas al cargar la página para llenar el "Select"
+  useEffect(() => {
+    const fetchUnitsForModal = async () => {
+      try {
+        // Reemplaza con tu ruta de API, ej: API_ENDPOINTS.catalog.list
+        const response = await apiClient.get(API_ENDPOINTS.catalog.list);
+        const unitsData = Array.isArray(response.data) 
+          ? response.data 
+          : (response.data?.content || []);
+        
+        setAvailableUnits(unitsData);
+      } catch (error) {
+        console.error("Error al cargar habitaciones para el modal:", error);
+      }
+    };
+    fetchUnitsForModal();
+  }, []);
+
+  // 3. Autocalcular el precio cuando cambian las fechas o la cabaña
+  useEffect(() => {
+    if (formData.checkInDate && formData.checkOutDate && formData.unitId) {
+      const start = new Date(formData.checkInDate);
+      const end = new Date(formData.checkOutDate);
+      
+      const diffTime = end.getTime() - start.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const noches = diffDays > 0 ? diffDays : 1;
+
+      // Buscar la cabaña elegida en nuestro estado
+      const cabana = availableUnits.find((u: any) => 
+        String(u.unitId) === String(formData.unitId) || String(u.id) === String(formData.unitId)
+      );
+      
+      const precioPorNoche = cabana?.pricePerNight || cabana?.price || 0; 
+      const totalCalculado = (noches * precioPorNoche).toString();
+
+      setFormData(prev => {
+        if (prev.amount !== totalCalculado) {
+          return { ...prev, amount: totalCalculado };
+        }
+        return prev;
+      });
+    }
+  }, [formData.checkInDate, formData.checkOutDate, formData.unitId, availableUnits]);
 
   return (
     <div className="min-h-screen bg-[#F4F7F9] flex flex-col font-sans text-gray-900">
@@ -254,8 +392,8 @@ export default function Reservations() {
               <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{stats.total}</div>
-              <div className="text-xs text-gray-400 mt-1">Octubre de 2026</div>
+              <div className="text-3xl font-semibold text-gray-900">{metrics.total}</div>
+              <div className="text-xs text-gray-400 mt-1">{metrics.monthLabel}</div>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
@@ -264,8 +402,8 @@ export default function Reservations() {
               <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{stats.confirmadas}</div>
-              <div className="text-xs text-gray-400 mt-1">{stats.total > 0 ? Math.round((stats.confirmadas / stats.total) * 100) : 0} % de las reservas</div>
+              <div className="text-3xl font-semibold text-gray-900">{metrics.confirmed}</div>
+              <div className="text-xs text-gray-400 mt-1">{metrics.confirmedPercentage} % de las reservas</div>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
@@ -274,8 +412,8 @@ export default function Reservations() {
               <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{stats.llegadasHoy}</div>
-              <div className="text-xs text-gray-400 mt-1">Miércoles, 7 de octubre</div>
+              <div className="text-3xl font-semibold text-gray-900">{metrics.arrivalsToday}</div>
+              <div className="text-xs text-gray-400 mt-1">{metrics.todayLabel}</div>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
@@ -284,8 +422,10 @@ export default function Reservations() {
               <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{formatCLP(stats.ingresosTotales.toString())}</div>
-              <div className="text-xs text-gray-400 mt-1">{stats.confirmadas} reservas · 11 noches</div>
+              <div className="text-3xl font-semibold text-gray-900">{formatCLP(metrics.totalRevenue)}</div>
+              <div className="text-xs text-gray-400 mt-1">
+                {metrics.confirmed} {metrics.confirmed === 1 ? 'reserva' : 'reservas'} · {metrics.confirmedNights} {metrics.confirmedNights === 1 ? 'noche' : 'noches'}
+              </div>
             </div>
           </div>
         </div>
@@ -323,7 +463,7 @@ export default function Reservations() {
               </div>
               <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap">
                 <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                Octubre 2026
+                {metrics.monthLabel}
               </button>
             </div>
           </div>
@@ -344,7 +484,7 @@ export default function Reservations() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredReservations.map((res) => {
-                    const matchedUnit = AVAILABLE_UNITS.find(u => u.name === res.unitName) || { location: 'Por asignar' };
+                    const matchedUnit = availableUnits.find(u => u.name === res.unitName) || { location: 'Por asignar' };
                     
                     return (
                       <tr key={res.id} className="hover:bg-gray-50 transition-colors group">
@@ -381,20 +521,47 @@ export default function Reservations() {
                           {formatCLP(res.amount).replace('$', 'US$ ')}
                         </td>
                         <td className="px-4 py-4 text-right">
-                          {canManageStatus && (
-                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {(canManageStatus || isHuesped) && (
+                            <div className="flex items-center justify-end gap-2">
                               {updatingReservationId === res.id ? (
                                 <span className="text-xs text-blue-500 animate-pulse">...</span>
                               ) : (
                                 <>
-                                  {res.status === 'CREADA' && (
-                                    <button onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')} className="text-xs text-green-600 hover:bg-green-50 px-2 py-1 rounded font-medium">
-                                      Confirmar
+                                  {isHuesped && res.status === 'CREADA' && (
+                                    <span className="text-xs text-gray-500">
+                                      En revisión por el administrador
+                                    </span>
+                                  )}
+                                  {isHuesped && res.status === 'CONFIRMADA' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePayReservation(res.id)}
+                                      disabled={payingReservationId === res.id}
+                                      className="text-xs text-white bg-[#0066FF] hover:bg-blue-700 disabled:opacity-60 px-3 py-2 rounded-lg font-semibold"
+                                    >
+                                      {payingReservationId === res.id
+                                        ? 'Conectando con Webpay…'
+                                        : 'Pagar con Webpay'}
                                     </button>
                                   )}
-                                  <button className="text-gray-400 hover:text-gray-600">
+                                  {isHuesped && res.status === 'CHECKIN_PENDIENTE' && (
+                                    <span className="text-xs text-green-700 font-semibold">
+                                      ¡Pagada! Lista para tu llegada.
+                                    </span>
+                                  )}
+                                  {isAdmin && res.status === 'CREADA' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
+                                      disabled={updatingReservationId === res.id}
+                                      className="text-xs text-green-600 hover:bg-green-50 disabled:opacity-60 px-2 py-1 rounded font-medium"
+                                    >
+                                      {updatingReservationId === res.id ? 'Aprobando…' : 'Aprobar'}
+                                    </button>
+                                  )}
+                                  {canManageStatus && <button className="text-gray-400 hover:text-gray-600">
                                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
-                                  </button>
+                                  </button>}
                                 </>
                               )}
                             </div>
@@ -441,11 +608,19 @@ export default function Reservations() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
                 <input type="email" required value={formData.guestEmail} onChange={(e) => setFormData({ ...formData, guestEmail: e.target.value })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all" />
               </div>
-              <div>
+<div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Alojamiento</label>
-                <select value={formData.unitId} onChange={(e) => setFormData({ ...formData, unitId: Number(e.target.value) })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all bg-white">
-                  {AVAILABLE_UNITS.map((unit) => (
-                    <option key={unit.id} value={unit.id}>{unit.name} ({unit.location})</option>
+                <select 
+                  value={formData.unitId} 
+                  onChange={(e) => setFormData({ ...formData, unitId: Number(e.target.value) })} 
+                  className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] transition-all bg-white"
+                  required
+                >
+                  <option value="">Seleccione una habitación...</option>
+                  {availableUnits.map((unit) => (
+                    <option key={unit.unitId || unit.id} value={unit.unitId || unit.id}>
+                      {unit.name} - ${Number(unit.pricePerNight || 0).toLocaleString('es-CL')} / noche
+                    </option>
                   ))}
                 </select>
               </div>
@@ -470,17 +645,23 @@ export default function Reservations() {
                     <option value="WhatsApp">WhatsApp</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto Estimado</label>
-                  <input type="text" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all" placeholder="$120.000" />
-                </div>
+<div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Monto Estimado</label>
+                <input 
+                  type="text" 
+                  readOnly
+                  value={formData.amount ? `$${Number(formData.amount).toLocaleString('es-CL')}` : '$0'} 
+                  className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none bg-gray-50 text-gray-500 font-semibold cursor-not-allowed" 
+                  placeholder="$0" 
+                />
+              </div>
               </div>
               <div className="flex justify-end gap-3 pt-5 border-t border-gray-100">
                 <button type="button" onClick={() => setIsModalOpen(false)} disabled={isCreating} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
                   Cancelar
                 </button>
                 <button type="submit" disabled={isCreating} className="px-5 py-2.5 text-sm font-medium text-white bg-[#0066FF] hover:bg-blue-700 rounded-lg shadow-sm transition-colors">
-                  {isCreating ? 'Conectando...' : 'Ir a Pagar'}
+                  {isCreating ? 'Creando...' : 'Crear reserva'}
                 </button>
               </div>
             </form>

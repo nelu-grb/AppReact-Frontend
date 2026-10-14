@@ -15,56 +15,77 @@ interface AuthContextType {
   hasAnyRole: (allowedRoles: string[]) => boolean;
 }
 
+type TokenClaims = Record<string, unknown>;
+
+const getRolesFromClaims = (claims: object | undefined): string[] | undefined => {
+  const roles = (claims as TokenClaims | undefined)?.roles;
+  return Array.isArray(roles) && roles.every((role): role is string => typeof role === 'string')
+    ? roles
+    : undefined;
+};
+
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// 2. Componente Provider principal
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const { accounts, instance, inProgress } = useMsal();
-  
-  // Estado para controlar la recuperación silenciosa de permisos
-  const [renewalState, setRenewalState] = useState<'idle' | 'renewing' | 'done'>('idle');
-
-  // Identificación de la cuenta activa
   const activeAccount = instance.getActiveAccount() ?? (accounts.length > 0 ? accounts[0] : null);
-  
-  const idTokenClaims = activeAccount?.idTokenClaims as any;
-  const roles = idTokenClaims?.roles; 
+  const accountId = activeAccount?.homeAccountId ?? null;
+  const idTokenClaims = activeAccount?.idTokenClaims as TokenClaims | undefined;
+  const accountRoles = getRolesFromClaims(idTokenClaims);
+  const [renewedRoles, setRenewedRoles] = useState<{
+    accountId: string;
+    roles: string[];
+  } | null>(null);
+  const [renewal, setRenewal] = useState<{
+    accountId: string | null;
+    status: 'idle' | 'renewing' | 'done';
+  }>({ accountId: null, status: 'idle' });
+
+  const renewalState = renewal.accountId === accountId ? renewal.status : 'idle';
+  const cachedRenewedRoles =
+    renewedRoles?.accountId === accountId ? renewedRoles.roles : undefined;
+  const roles = accountRoles ?? cachedRenewedRoles;
 
   useEffect(() => {
     const checkAndRenewRoles = async () => {
-      // Si MSAL está ocupado procesando algo, esperamos
       if (inProgress !== InteractionStatus.None) return;
+      if (!activeAccount || !accountId || roles !== undefined || renewalState !== 'idle') return;
 
-      // SI NO HAY CUENTA: No hacemos nada y dejamos que React Router muestre la vista de /login
-      if (!activeAccount) return;
+      setRenewal({ accountId, status: 'renewing' });
+      console.info('No se encontraron roles en la sesión. Recuperando permisos silenciosamente...');
 
-      // Si hay una cuenta pero faltan los roles, los recuperamos silenciosamente
-      if (roles === undefined && renewalState === 'idle') {
-        setRenewalState('renewing');
-        console.log("Memoria de roles vacía. Recuperando permisos silenciosamente...");
-        try {
-          await instance.acquireTokenSilent({
-            scopes: ["openid", "profile"],
-            account: activeAccount,
-            forceRefresh: true // Solicita un token actualizado con los roles
-          });
-        } catch (error) {
-          console.warn("Falló la renovación invisible. Redirigiendo a inicio de sesión...", error);
-          instance.loginRedirect();
-        } finally {
-          setRenewalState('done');
+      try {
+        const tokenResponse = await instance.acquireTokenSilent({
+          scopes: ['openid', 'profile'],
+          account: activeAccount,
+          forceRefresh: true,
+        });
+        const refreshedRoles = getRolesFromClaims(tokenResponse.idTokenClaims);
+
+        if (refreshedRoles !== undefined) {
+          setRenewedRoles({ accountId, roles: refreshedRoles });
+        } else {
+          console.warn('La renovación de sesión no devolvió roles en el token.');
         }
+      } catch (error) {
+        console.warn('Falló la renovación silenciosa. Redirigiendo a inicio de sesión...', error);
+        try {
+          await instance.loginRedirect();
+        } catch (redirectError) {
+          console.error('No se pudo redirigir al inicio de sesión:', redirectError);
+        }
+      } finally {
+        setRenewal({ accountId, status: 'done' });
       }
     };
 
-    checkAndRenewRoles();
-  }, [inProgress, activeAccount, roles, renewalState, instance]);
+    void checkAndRenewRoles();
+  }, [inProgress, activeAccount, accountId, roles, renewalState, instance]);
 
-  // Se muestra la pantalla de carga ÚNICAMENTE si hay una cuenta activa y se están validando sus roles
-  const isCheckingRoles = 
+  const isCheckingRoles =
     activeAccount !== null && (
-      inProgress !== InteractionStatus.None || 
-      renewalState === 'renewing' || 
+      inProgress !== InteractionStatus.None ||
+      renewalState === 'renewing' ||
       (roles === undefined && renewalState === 'idle')
     );
 
@@ -78,9 +99,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  // 3. Extracción y normalización de roles (con valores por defecto si no hay sesión)
-  const finalRoles: string[] = activeAccount ? (roles || []) : [];
-  const fullName: string = activeAccount ? (activeAccount.name || idTokenClaims?.name || 'Usuario') : '';
+  const finalRoles = activeAccount ? (roles ?? []) : [];
+  const claimName = idTokenClaims?.name;
+  const fullName = activeAccount
+    ? activeAccount.name || (typeof claimName === 'string' ? claimName : 'Usuario')
+    : '';
 
   const nameParts = fullName.trim().split(' ').filter(Boolean);
   const initials =
@@ -90,7 +113,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const normalizeRole = (role: string) =>
     role.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-    
+
   const normalizedRoles = finalRoles.map(normalizeRole);
   const isAdmin = normalizedRoles.includes('admin') || normalizedRoles.includes('administrador');
   const isRecepcionista = normalizedRoles.includes('recepcionista') || normalizedRoles.includes('operador');
@@ -101,7 +124,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isAdmin ? 'ADMIN' :
     isRecepcionista ? 'RECEPCIONISTA' :
     isAuditor ? 'AUDITOR' :
-    isHuesped ? 'HUÉSPED' : 
+    isHuesped ? 'HUÉSPED' :
     'Por Defecto';
 
   const hasAnyRole = (allowedRoles: string[]): boolean => {
@@ -111,15 +134,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{
-      fullName, initials, roles: finalRoles, primaryRole, isAdmin, isRecepcionista, isHuesped, isAuditor, hasAnyRole
-    }}>
+    <AuthContext.Provider
+      value={{
+        fullName,
+        initials,
+        roles: finalRoles,
+        primaryRole,
+        isAdmin,
+        isRecepcionista,
+        isHuesped,
+        isAuditor,
+        hasAnyRole,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Hook personalizado para usar el contexto de autenticación
+// This hook intentionally lives beside its provider to expose the context API.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth debe usarse dentro de un AuthProvider');

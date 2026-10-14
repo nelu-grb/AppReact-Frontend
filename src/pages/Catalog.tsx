@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
+import apiClient from '../services/apiClient';
+import { API_ENDPOINTS } from '../config/apiConfig';
 export type PropertyType = 'Hostal' | 'Cabaña' | 'Lodge';
 
 export interface Property {
@@ -16,21 +17,18 @@ export interface Property {
   cleaningRooms: number;
 }
 
-const INITIAL_PROPERTIES: Property[] = [
-  { id: '1', code: 'P01', name: 'El Roble', location: 'Santiago Centro', region: 'Región RM', type: 'Hostal', totalRooms: 18, occupiedRooms: 14, cleaningRooms: 3 },
-  { id: '2', code: 'P02', name: 'Cerro Azul', location: 'Valparaíso', region: 'Región V', type: 'Hostal', totalRooms: 12, occupiedRooms: 10, cleaningRooms: 2 },
-  { id: '3', code: 'P03', name: 'Lastarria', location: 'Santiago', region: 'Región RM', type: 'Hostal', totalRooms: 8, occupiedRooms: 6, cleaningRooms: 1 },
-  { id: '4', code: 'P04', name: 'El Arrayán', location: 'Santiago', region: 'Región RM', type: 'Hostal', totalRooms: 10, occupiedRooms: 7, cleaningRooms: 0 },
-  { id: '5', code: 'P05', name: 'Los Boldos', location: 'Pucón', region: 'Región IX', type: 'Cabaña', totalRooms: 6, occupiedRooms: 6, cleaningRooms: 1 },
-  { id: '6', code: 'P06', name: 'Lago Llanquihue', location: 'Puerto Varas', region: 'Región X', type: 'Cabaña', totalRooms: 8, occupiedRooms: 5, cleaningRooms: 2 },
-];
+
 
 const REGIONS_LIST = ['Todas', 'Región RM', 'Región V', 'Región IX', 'Región X', 'Región II'];
 const TYPES_LIST = ['Todos', 'Hostal', 'Cabaña', 'Lodge'];
 
+
 export default function Catalog() {
   const { isAdmin, isHuesped } = useAuth();
-  const [properties, setProperties] = useState<Property[]>(INITIAL_PROPERTIES);
+  
+  // 1. Inicializamos la lista vacía
+  const [properties, setProperties] = useState<Property[]>([]);
+  
   const [selectedType, setSelectedType] = useState<string>('Todos');
   const [selectedRegion, setSelectedRegion] = useState<string>('Todas');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -38,24 +36,88 @@ export default function Catalog() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
 
+
   const [formData, setFormData] = useState({
     name: '',
     location: '',
-    region: 'Región RM',
+    region: '',
     type: 'Hostal' as PropertyType,
     totalRooms: 10,
     occupiedRooms: 0,
     cleaningRooms: 0,
   });
 
-  // Filtros dinámicos
+
+
+  // 2. Traemos los datos reales del backend al cargar la página
+// Traemos los datos reales y cruzamos con las reservas activas
+  useEffect(() => {
+    const fetchCatalogAndOccupancy = async () => {
+      try {
+        // 1. Descargamos Catálogo y Reservas al mismo tiempo (ajusta tus rutas de API_ENDPOINTS si es necesario)
+        const [catalogResponse, reservationsResponse] = await Promise.all([
+          apiClient.get(API_ENDPOINTS.catalog.list), // ej. '/catalog' o '/units'
+          apiClient.get(API_ENDPOINTS.reservations.list) // ej. '/reservations'
+        ]);
+
+        const rawUnits = Array.isArray(catalogResponse.data) 
+          ? catalogResponse.data 
+          : (catalogResponse.data?.content || []);
+          
+        const rawReservations = Array.isArray(reservationsResponse.data) 
+          ? reservationsResponse.data 
+          : (reservationsResponse.data?.content || []);
+
+        const normalizeStatus = (status?: string) =>
+          status ? status.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() : '';
+
+        // 2. Mapeamos las propiedades calculando su ocupación real
+        const mappedProperties: Property[] = rawUnits.map((unit: any) => {
+          const currentUnitId = String(unit.unitId || unit.id);
+          
+          // 3. Filtramos las reservas para encontrar quién está EN_ESTADIA en esta unidad específica
+          const activeOccupants = rawReservations.filter((res: any) => {
+            // Verifica cómo viene el ID de la unidad en tu reserva (unitId, alojamientoId, etc.)
+            const resUnitId = String(res.unitId || res.alojamientoId || (res.unit && res.unit.id) || '');
+            const estado = normalizeStatus(res.status ?? res.estado);
+            
+            return resUnitId === currentUnitId && estado === 'EN_ESTADIA';
+          });
+
+          return {
+            id: currentUnitId,
+            code: `U${currentUnitId}`,
+            name: unit.name || 'Sin nombre',
+            location: unit.city || 'Sin ciudad',
+            region: 'Región RM', 
+            type: unit.type === 'HABITACION' ? 'Hostal' : unit.type === 'SUITE' ? 'Lodge' : 'Cabaña',
+            totalRooms: unit.rooms || 1,
+            occupiedRooms: activeOccupants.length, // ¡AQUÍ ESTÁ LA MAGIA! Reemplazamos el 0 por el conteo real
+            cleaningRooms: 0
+          };
+        });
+
+        setProperties(mappedProperties);
+      } catch (error) {
+        console.error('Error al cargar el catálogo y cruzar ocupación:', error);
+      }
+    };
+
+    fetchCatalogAndOccupancy();
+  }, []);
+
+
   const filteredProperties = properties.filter((prop) => {
     const matchesType = selectedType === 'Todos' || prop.type === selectedType;
     const matchesRegion = selectedRegion === 'Todas' || prop.region === selectedRegion;
+    
+    const search = (searchTerm || '').toLowerCase();
+    
+    // Usamos (prop.name || '') para que si es null, se convierta en texto vacío y no rompa la página
     const matchesSearch =
-      prop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      prop.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      prop.code.toLowerCase().includes(searchTerm.toLowerCase());
+      (prop.name || '').toLowerCase().includes(search) ||
+      (prop.location || '').toLowerCase().includes(search) ||
+      (prop.code || '').toLowerCase().includes(search);
 
     return matchesType && matchesRegion && matchesSearch;
   });
@@ -83,7 +145,7 @@ export default function Catalog() {
       setFormData({
         name: '',
         location: '',
-        region: 'Región RM',
+        region: '',
         type: 'Hostal',
         totalRooms: 10,
         occupiedRooms: 0,
@@ -451,5 +513,4 @@ export default function Catalog() {
         </div>
       )}
     </div>
-  );
-}
+  );}

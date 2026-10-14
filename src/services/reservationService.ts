@@ -20,6 +20,7 @@ export type ReservationStatus =
 
 // Estructura de respuesta devuelta por Spring Boot
 export interface ReservationResponse {
+  unit: any;
   id: number;
   code: string;
   guestId: string;
