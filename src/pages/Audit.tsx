@@ -1,110 +1,49 @@
-import { useState } from 'react';
-import {useAuth} from '../context/AuthContext';
-
-type AuditAction = 'CREACIÓN' | 'CONFIRMACIÓN' | 'CHECK-IN' | 'CHECK-OUT' | 'CANCELACIÓN';
-
-interface AuditEvent {
-  id: string;
-  timestamp: string;
-  reservationId: string;
-  user: string;
-  action: AuditAction;
-  details: string;
-  ip: string;
-  payload?: Record<string, unknown>;
-}
-
-const INITIAL_EVENTS: AuditEvent[] = [
-  {
-    id: 'EVT-9081',
-    timestamp: '10/09/2026 15:42',
-    reservationId: 'R-2026-0894',
-    user: 'admin.prueba@andesstay.cl',
-    action: 'CONFIRMACIÓN',
-    details: 'Estado cambiado de CREADA a CONFIRMADA. Evento emitido a broker de mensajería.',
-    ip: '190.160.24.12',
-    payload: {
-      eventId: 'EVT-9081',
-      sourceService: 'reservation-service',
-      previousState: 'CREATED',
-      newState: 'CONFIRMED',
-      processedBy: 'admin.prueba@andesstay.cl',
-      rabbitmqCluster: 'cluster-prod-sa-east-1',
-    },
-  },
-  {
-    id: 'EVT-9080',
-    timestamp: '10/09/2026 14:15',
-    reservationId: 'R-2026-0894',
-    user: 'carlos.mendoza@gmail.com',
-    action: 'CREACIÓN',
-    details: 'Reserva web generada para Cabaña Bosque Nativo #4.',
-    ip: '201.214.90.3',
-    payload: {
-      eventId: 'EVT-9080',
-      sourceService: 'web-checkout-gateway',
-      propertyId: 'PROP-PUC-004',
-      nights: 4,
-      totalAmount: 428000,
-      currency: 'CLP',
-    },
-  },
-  {
-    id: 'EVT-9079',
-    timestamp: '09/09/2026 11:28',
-    reservationId: 'R-2026-0891',
-    user: 'recepcion.pucon@andesstay.cl',
-    action: 'CHECK-IN',
-    details: 'Huésped ingresó a la unidad. Ticket de housekeeping marcado como COMPLETADO.',
-    ip: '190.160.24.12',
-    payload: {
-      eventId: 'EVT-9079',
-      sourceService: 'frontdesk-app',
-      keyCardIssued: true,
-      roomNumber: '102',
-      verifiedIdentityDoc: 'RUT-CHILE',
-    },
-  },
-  {
-    id: 'EVT-9078',
-    timestamp: '08/09/2026 18:05',
-    reservationId: 'R-2026-0887',
-    user: 'admin.prueba@andesstay.cl',
-    action: 'CHECK-OUT',
-    details: 'Cierre de estadía. Cupo liberado en catálogo y sincronizado con OTAs.',
-    ip: '190.160.24.12',
-    payload: {
-      eventId: 'EVT-9078',
-      sourceService: 'reservation-service',
-      minibarConsumed: 0,
-      checkoutLate: false,
-    },
-  },
-  {
-    id: 'EVT-9077',
-    timestamp: '07/09/2026 09:12',
-    reservationId: 'R-2026-0880',
-    user: 'ana.beltran@gmail.com',
-    action: 'CANCELACIÓN',
-    details: 'Cancelación solicitada por el usuario fuera de ventana de penalización.',
-    ip: '186.105.12.88',
-    payload: {
-      eventId: 'EVT-9077',
-      reason: 'USER_REQUEST',
-      refundIssued: true,
-      refundAmount: 180000,
-    },
-  },
-];
+import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { fetchAuditEvents, type AuditEvent } from '../services/auditService';
 
 export default function Audit() {
   const { isAdmin, isAuditor } = useAuth();
-  const [filterAction, setFilterAction] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  // Protección RBAC: Solo Administradores y Auditores pueden acceder
   const canViewAudit = isAdmin || isAuditor;
+
+  const loadEvents = async () => {
+    try {
+      setLoading(true);
+      const auditEvents = await fetchAuditEvents();
+      setEvents(auditEvents);
+      setLoadError(false);
+    } catch (error: unknown) {
+      console.error('Error al cargar los eventos de auditoría:', error);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!canViewAudit) return;
+
+    let isMounted = true;
+    const fetchData = async () => {
+      if (isMounted) await loadEvents();
+    };
+
+    void fetchData();
+    const refreshInterval = window.setInterval(() => {
+      void fetchData();
+    }, 10_000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(refreshInterval);
+    };
+  }, [canViewAudit]);
 
   if (!canViewAudit) {
     return (
@@ -115,188 +54,311 @@ export default function Audit() {
           </div>
           <h2 className="text-lg font-bold text-gray-900 mb-2">Acceso Restringido</h2>
           <p className="text-xs text-gray-500 leading-relaxed">
-            No posees los permisos necesarios (Auditor o Admin) para consultar la trazabilidad del log de auditoría inmutable.
+            No posees los permisos necesarios (Auditor o Admin) para consultar los eventos de auditoría.
           </p>
         </div>
       </div>
     );
   }
 
-  const filteredEvents = INITIAL_EVENTS.filter((evt) => {
-    const matchesAction = filterAction === 'ALL' || evt.action === filterAction;
+  // Filtrado por término de búsqueda
+  const filteredEvents = events.filter((evt) => {
     const term = searchTerm.toLowerCase().trim();
-    const matchesSearch =
-      !term ||
-      evt.user.toLowerCase().includes(term) ||
-      evt.reservationId.toLowerCase().includes(term) ||
-      evt.id.toLowerCase().includes(term) ||
-      evt.details.toLowerCase().includes(term) ||
-      evt.ip.includes(term);
+    if (!term) return true;
 
-    return matchesAction && matchesSearch;
+    // Intentar leer datos formateados o extraídos
+    const action = String(evt.action || '').toLowerCase();
+    const user = String(evt.user || '').toLowerCase();
+    const resId = String(evt.reservationId || '').toLowerCase();
+    const id = String(evt.id || '').toLowerCase();
+    const details = String(evt.details || '').toLowerCase();
+    const title = String(evt.title || '').toLowerCase();
+
+    return action.includes(term) || title.includes(term) || user.includes(term) ||
+      resId.includes(term) || id.includes(term) || details.includes(term);
+  }).sort((a, b) => {
+    const timestampA = new Date(a.timestamp).getTime();
+    const timestampB = new Date(b.timestamp).getTime();
+    return (Number.isNaN(timestampB) ? 0 : timestampB) - (Number.isNaN(timestampA) ? 0 : timestampA);
   });
 
-  const getActionBadgeColor = (action: AuditAction) => {
-    switch (action) {
-      case 'CREACIÓN':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'CONFIRMACIÓN':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'CHECK-IN':
-        return 'bg-[#CB6D51]/10 text-[#CB6D51] border-[#CB6D51]/20';
-      case 'CHECK-OUT':
-        return 'bg-purple-50 text-purple-700 border-purple-200';
-      case 'CANCELACIÓN':
-        return 'bg-rose-50 text-rose-700 border-rose-200';
-      default:
-        return 'bg-gray-50 text-gray-700 border-gray-200';
-    }
+  // Agrupación auxiliar por fecha
+  const groupEventsByDate = (eventList: AuditEvent[]) => {
+    const groups: { [key: string]: AuditEvent[] } = {};
+
+    eventList.forEach((evt) => {
+      let dateKey = 'EVENTOS RECIENTES';
+      if (evt.timestamp) {
+        try {
+          const date = new Date(evt.timestamp);
+          if (!isNaN(date.getTime())) {
+            dateKey = date.toLocaleDateString('es-CL', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            });
+            dateKey = dateKey.charAt(0).toUpperCase() + dateKey.slice(1);
+          }
+        } catch {
+          // Si no es fecha parsed, usar fallback
+        }
+      }
+
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(evt);
+    });
+
+    return groups;
   };
 
-  const clearFilters = () => {
-    setFilterAction('ALL');
-    setSearchTerm('');
+  const groupedEvents = groupEventsByDate(filteredEvents);
+
+  // Helper para iconos e identificadores según la acción
+  const getEventVisuals = (action: string) => {
+    const norm = (action || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    if (norm.includes('CREA')) {
+      return {
+        title: 'Reserva creada',
+        icon: '+',
+        iconBg: 'bg-blue-50 text-blue-500 border-blue-200',
+        badgeBg: 'bg-blue-50 text-blue-600 border-blue-100',
+      };
+    }
+    if (norm.includes('CONFIRM')) {
+      return {
+        title: 'Reserva confirmada',
+        icon: '✓',
+        iconBg: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+        badgeBg: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      };
+    }
+    if (norm.includes('CHECKIN') || norm.includes('CHECK-IN')) {
+      return {
+        title: 'Check-in registrado',
+        icon: '→',
+        iconBg: 'bg-amber-50 text-amber-600 border-amber-200',
+        badgeBg: 'bg-amber-50 text-amber-600 border-amber-100',
+      };
+    }
+    if (norm.includes('CHECKOUT') || norm.includes('CHECK-OUT')) {
+      return {
+        title: 'Check-out registrado',
+        icon: '←',
+        iconBg: 'bg-purple-50 text-purple-600 border-purple-200',
+        badgeBg: 'bg-purple-50 text-purple-600 border-purple-100',
+      };
+    }
+    if (norm.includes('CANCEL')) {
+      return {
+        title: 'Reserva cancelada',
+        icon: '✕',
+        iconBg: 'bg-rose-50 text-rose-500 border-rose-200',
+        badgeBg: 'bg-rose-50 text-rose-600 border-rose-100',
+      };
+    }
+    if (norm.includes('STATUS_UPDATED') || norm.includes('UPDATED')) {
+      return {
+        title: 'Estado de reserva actualizado',
+        icon: '↻',
+        iconBg: 'bg-purple-50 text-purple-500 border-purple-200',
+        badgeBg: 'bg-purple-50 text-purple-600 border-purple-100',
+      };
+    }
+    if (norm.includes('ASSIGN')) {
+      return {
+        title: 'Habitación asignada',
+        icon: '▣',
+        iconBg: 'bg-purple-50 text-purple-500 border-purple-200',
+        badgeBg: 'bg-purple-50 text-purple-600 border-purple-100',
+      };
+    }
+    return {
+      title: action || 'Actualización de evento',
+      icon: '•',
+      iconBg: 'bg-purple-50 text-purple-500 border-purple-200',
+      badgeBg: 'bg-purple-50 text-purple-600 border-purple-100',
+    };
+  };
+
+  const formatTime = (timestamp?: string) => {
+    if (!timestamp) return '—';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '—';
+    return new Intl.DateTimeFormat('es-CL', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans relative">
+    <div className="min-h-screen bg-[#F5F6F8] flex flex-col font-sans text-xs pb-12">
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
         
-        {/* Encabezado e Indicadores */}
+        {/* Header Principal */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                Timeline de Auditoría
-              </h1>
-              <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                Solo Lectura
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Registro inmutable de eventos consumidos en tiempo real desde Kafka Topic (<code className="font-mono text-[11px] text-[#1A423B]">andesstay-audit-events</code>).
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+              Timeline de Auditoría
+            </h1>
+            <p className="text-gray-500 mt-1">
+              Registro cronológico de eventos recibidos y consultados desde el servicio de auditoría.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg text-emerald-700 text-xs font-semibold self-start md:self-auto shadow-2xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Kafka Consumer Active
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl font-medium shadow-2xs transition-all cursor-pointer"
+            >
+              Exportar
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadEvents()}
+              className="flex items-center gap-1.5 bg-[#0062FF] hover:bg-[#0052d4] text-white px-4 py-2 rounded-xl font-medium shadow-sm transition-all cursor-pointer font-semibold"
+            >
+              Actualizar
+            </button>
           </div>
         </div>
 
-        {/* Barra de Filtros y Control */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-2xs flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="w-full md:w-96 relative">
+        {/* Barra de Búsqueda Centrada */}
+        <div className="bg-white p-3 rounded-2xl border border-gray-200/80 shadow-2xs">
+          <div className="relative w-full">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
             <input
               type="text"
-              placeholder="Buscar por evento, usuario, reserva o IP..."
+              placeholder="Buscar por evento, usuario, reserva, IP..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-[#1A423B] transition-all"
+              className="w-full pl-10 pr-4 py-2 bg-gray-50/70 border border-gray-100 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#0062FF] focus:bg-white transition-all text-xs text-gray-800"
             />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Acción:</label>
-            <select
-              value={filterAction}
-              onChange={(e) => setFilterAction(e.target.value)}
-              className="bg-gray-50/80 border border-gray-200 text-xs font-semibold px-3 py-2 rounded-lg text-gray-700 focus:outline-hidden focus:ring-2 focus:ring-[#1A423B] cursor-pointer"
-            >
-              <option value="ALL">Todos los eventos</option>
-              <option value="CREACIÓN">Creación</option>
-              <option value="CONFIRMACIÓN">Confirmación</option>
-              <option value="CHECK-IN">Check-In</option>
-              <option value="CHECK-OUT">Check-Out</option>
-              <option value="CANCELACIÓN">Cancelación</option>
-            </select>
-
-            {(filterAction !== 'ALL' || searchTerm) && (
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="text-xs font-medium text-[#CB6D51] hover:underline px-2"
-              >
-                Limpiar
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Tabla de Eventos */}
-        <div className="bg-white rounded-xl border border-gray-200/80 shadow-2xs overflow-hidden">
-          <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/40">
-            <span className="text-xs font-semibold text-gray-500">
-              Mostrando <strong className="text-gray-900">{filteredEvents.length}</strong> de {INITIAL_EVENTS.length} registros
-            </span>
-            <span className="text-[10px] font-mono text-gray-400">RETENTION_POLICY: 365 DAYS</span>
-          </div>
-
-          {filteredEvents.length === 0 ? (
-            <div className="p-12 text-center">
-              <p className="text-sm font-semibold text-gray-700">No se encontraron eventos</p>
-              <p className="text-xs text-gray-400 mt-1">Prueba cambiando los términos de búsqueda o el filtro de acción.</p>
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-4 text-xs font-bold text-[#1A423B] bg-[#1A423B]/10 px-4 py-2 rounded-lg hover:bg-[#1A423B]/20 transition-colors"
-              >
-                Restablecer Filtros
-              </button>
+        {/* Dashboard de Eventos Agrupados por Fecha */}
+        <div className="space-y-6">
+          {loading ? (
+            <div className="bg-white p-12 rounded-2xl border border-gray-200/80 text-center text-gray-500">
+              Cargando eventos de auditoría…
+            </div>
+          ) : loadError ? (
+            <div className="bg-white p-12 rounded-2xl border border-gray-200/80 text-center">
+              <p className="font-semibold text-gray-700">No se pudieron cargar los eventos</p>
+              <p className="text-gray-400 mt-1">Revisa la conexión con el servicio de auditoría.</p>
+            </div>
+          ) : Object.keys(groupedEvents).length === 0 ? (
+            <div className="bg-white p-12 rounded-2xl border border-gray-200/80 text-center text-gray-500">
+              No se encontraron eventos registrados.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/70 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    <th className="px-6 py-3.5">ID Evento / Fecha</th>
-                    <th className="px-6 py-3.5">Reserva</th>
-                    <th className="px-6 py-3.5">Acción</th>
-                    <th className="px-6 py-3.5">Usuario Responsable</th>
-                    <th className="px-6 py-3.5">Detalles de Operación</th>
-                    <th className="px-6 py-3.5 text-right">IP Origen</th>
-                    <th className="px-6 py-3.5 text-center">Payload</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-xs">
-                  {filteredEvents.map((evt) => (
-                    <tr key={evt.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="px-6 py-4">
-                        <span className="font-mono font-bold text-gray-900 block">{evt.id}</span>
-                        <span className="font-mono text-[10px] text-gray-400">{evt.timestamp}</span>
-                      </td>
-                      <td className="px-6 py-4 font-mono font-semibold text-gray-800">{evt.reservationId}</td>
-                      <td className="px-6 py-4">
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border ${getActionBadgeColor(evt.action)}`}>
-                          {evt.action}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600 font-medium">{evt.user}</td>
-                      <td className="px-6 py-4 text-gray-700 max-w-sm leading-relaxed">{evt.details}</td>
-                      <td className="px-6 py-4 text-right font-mono text-[11px] text-gray-400">{evt.ip}</td>
-                      <td className="px-6 py-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEvent(evt)}
-                          className="text-[11px] font-semibold text-[#1A423B] hover:text-[#13332d] bg-[#1A423B]/5 hover:bg-[#1A423B]/10 px-2.5 py-1 rounded transition-colors"
-                        >
-                          Ver JSON
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            Object.entries(groupedEvents).map(([dateLabel, groupList]) => (
+              <div key={dateLabel} className="space-y-3">
+                {/* Encabezado del Día */}
+                <div className="flex items-center gap-2 px-1">
+                  <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                    {dateLabel}
+                  </h3>
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    {groupList.length} evento{groupList.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Tarjeta Contenedora de Eventos del Día */}
+                <div className="bg-white rounded-2xl border border-gray-200/80 shadow-2xs divide-y divide-gray-100 overflow-hidden">
+                  {groupList.map((evt, idx) => {
+                    const visuals = getEventVisuals(evt.action || '');
+                    const formattedTime = formatTime(evt.timestamp);
+                    const formattedId = evt.id || '—';
+                    const eventTitle = evt.title || visuals.title || evt.action || '—';
+                    const changeDescription = evt.details ||
+                      (evt.previousState && evt.newState
+                        ? `${evt.previousState} → ${evt.newState}`
+                        : evt.reservationSummary) ||
+                      'Sin detalle de cambio proporcionado';
+
+                    return (
+                      <div
+                        key={evt.id || idx}
+                        className="p-4 md:px-6 hover:bg-gray-50/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4"
+                      >
+                        {/* BLOQUE IZQUIERDO: Hora/ID + Icono + Nombre/Reserva/Detalles */}
+                        <div className="flex items-center gap-4 min-w-0">
+                          {/* Hora e ID */}
+                          <div className="w-16 shrink-0 text-left">
+                            <span className="font-mono font-bold text-gray-900 text-xs block leading-tight">
+                              {formattedTime}
+                            </span>
+                            <span className="font-mono text-[10px] text-gray-400 block mt-0.5">
+                              {formattedId}
+                            </span>
+                          </div>
+
+                          {/* Icono Circular */}
+                          <div className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 font-bold text-sm ${visuals.iconBg}`}>
+                            {visuals.icon}
+                          </div>
+
+                          {/* Nombre del evento, Código de Reserva y Descripción */}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-900 text-xs">
+                                {eventTitle}
+                              </span>
+                              {evt.reservationId && (
+                                <span className="font-mono text-[#0062FF] font-semibold text-xs hover:underline cursor-pointer">
+                                  {evt.reservationId}
+                                </span>
+                              )}
+                              {evt.guestName && (
+                                <span className="text-gray-400 text-xs font-normal">
+                                  · {evt.guestName}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-gray-500 text-[11px] mt-0.5 truncate max-w-md">
+                              {changeDescription}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* BLOQUE DERECHO: Usuario/Rol + Badge de Estado + Botón JSON */}
+                        <div className="flex items-center justify-between md:justify-end gap-6 shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-gray-100">
+                          {/* Usuario Responsable y Origen */}
+                          <div className="text-left md:text-right">
+                            <span className="font-semibold text-gray-800 text-xs block">
+                              {evt.user || 'Sistema'}
+                            </span>
+                            <span className="text-[10px] text-gray-400 block">
+                              {evt.actorRole || (evt.ip ? `IP: ${evt.ip}` : '—')}
+                            </span>
+                          </div>
+
+                          {/* Badge de Estado */}
+                          <div>
+                            <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-md border uppercase tracking-wide ${visuals.badgeBg}`}>
+                              {evt.status || evt.action || '—'}
+                            </span>
+                          </div>
+
+                          {/* Botón Ver JSON */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEvent(evt)}
+                            className="text-[11px] font-semibold text-[#0062FF] hover:bg-blue-50/80 px-3 py-1.5 rounded-lg transition-colors border border-blue-100 cursor-pointer flex items-center gap-1"
+                          >
+                            <span>&#123; &#125;</span> Ver JSON
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           )}
         </div>
       </main>
@@ -304,16 +366,19 @@ export default function Audit() {
       {/* Modal Inspector de Payload JSON */}
       {selectedEvent && (
         <div className="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full border border-gray-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full border border-gray-200 shadow-xl overflow-hidden animate-in fade-in duration-150">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50">
               <div>
-                <h3 className="font-bold text-gray-900 text-sm">Inspector de Evento Kafka</h3>
-                <p className="text-xs font-mono text-gray-500 mt-0.5">{selectedEvent.id} — {selectedEvent.reservationId}</p>
+                <h3 className="font-bold text-gray-900 text-sm">Inspector de evento</h3>
+                <p className="text-xs font-mono text-gray-500 mt-0.5">
+                  {selectedEvent.id || '—'}
+                  {selectedEvent.reservationId ? ` — Reserva ${selectedEvent.reservationId}` : ''}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedEvent(null)}
-                className="w-7 h-7 rounded-full bg-gray-200/60 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-xs font-bold transition-colors"
+                className="w-7 h-7 rounded-full bg-gray-200/60 text-gray-600 hover:bg-gray-200 flex items-center justify-center font-bold transition-colors cursor-pointer text-xs"
               >
                 ✕
               </button>
@@ -324,8 +389,8 @@ export default function Audit() {
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
                   Resumen de Transacción
                 </span>
-                <p className="text-xs text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                  {selectedEvent.details}
+                <p className="text-gray-700 bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs">
+                  {selectedEvent.details || 'Sin detalles adicionales registrados'}
                 </p>
               </div>
 
@@ -343,7 +408,7 @@ export default function Audit() {
               <button
                 type="button"
                 onClick={() => setSelectedEvent(null)}
-                className="bg-[#1A423B] hover:bg-[#13332d] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                className="bg-[#0062FF] hover:bg-[#0052d4] text-white font-semibold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
               >
                 Cerrar Inspector
               </button>

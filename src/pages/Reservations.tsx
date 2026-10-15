@@ -24,11 +24,25 @@ export interface Reservation {
   unitName: string;
   checkInDate: string;
   checkOutDate: string;
-  channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
   status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADÍA' | 'CHECKOUT' | 'CANCELADA';
   amount: string;
 }
 
+const reservationStatusFilters: Array<{ status: Reservation['status']; label: string }> = [
+  { status: 'CREADA', label: 'Creadas' },
+  { status: 'CONFIRMADA', label: 'Confirmadas' },
+  { status: 'CHECKIN_PENDIENTE', label: 'Check-in pendiente' },
+  { status: 'EN_ESTADÍA', label: 'En estadía' },
+  { status: 'CHECKOUT', label: 'Check-out' },
+  { status: 'CANCELADA', label: 'Canceladas' },
+];
+
+const confirmedReservationStatuses = new Set([
+  'CONFIRMADA',
+  'CHECKIN_PENDIENTE',
+  'EN_ESTADIA',
+  'CHECKOUT',
+]);
 
 const getInitials = (name: string) => {
   if (!name) return '??';
@@ -40,24 +54,7 @@ const getInitials = (name: string) => {
 const normalizeStatus = (status: string) =>
   status.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 
-const getDateKey = (value: string) => {
-  // Las fechas YYYY-MM-DD se mantienen como fecha local para evitar cambios por zona horaria.
-  const dateOnly = /^(\d{4}-\d{2}-\d{2})/.exec(value)?.[1];
-  if (dateOnly) {
-    const parsedDate = new Date(`${dateOnly}T00:00:00Z`);
-    return Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== dateOnly
-      ? null
-      : dateOnly;
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const isInStayStatus = (status: string) => normalizeStatus(status) === 'EN_ESTADIA';
 
 export default function Reservations() {
   const { fullName, isAdmin, isRecepcionista, isHuesped } = useAuth();
@@ -86,7 +83,6 @@ export default function Reservations() {
     unitId: 1,
     checkInDate: '',
     checkOutDate: '',
-    channel: 'Directo' as Reservation['channel'],
     amount: '$120.000',
   });
 
@@ -115,7 +111,6 @@ export default function Reservations() {
           unitName: item.unitName || matchedUnit?.name || (resUnitId ? `Unidad #${resUnitId}` : 'Sin Asignar'),
           checkInDate: item.startDate,
           checkOutDate: item.endDate,
-          channel: (item.channel as Reservation['channel']) || 'Directa',
           status: item.status || 'CREADA',
           amount: String(item.totalAmount ?? 0),
         };
@@ -202,7 +197,6 @@ export default function Reservations() {
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
       totalAmount: numericAmount,
-      channel: formData.channel,
     };
 
     try {
@@ -219,7 +213,8 @@ export default function Reservations() {
 
   const filteredReservations = useMemo(() => {
     return reservations.filter((res) => {
-      const matchesStatus = statusFilter === 'ALL' || res.status === statusFilter;
+      const matchesStatus =
+        statusFilter === 'ALL' || normalizeStatus(res.status) === normalizeStatus(statusFilter);
       const matchesSearch =
         res.guestId.toLowerCase().includes(searchQuery.toLowerCase()) ||
         res.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -229,66 +224,39 @@ export default function Reservations() {
   }, [reservations, statusFilter, searchQuery]);
 
   const metrics = useMemo(() => {
-    const now = new Date();
-    const todayKey = getDateKey(
-      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    );
-    const confirmedReservations = reservations.filter(
-      (reservation) => normalizeStatus(reservation.status) === 'CONFIRMADA'
-    );
-
-    // Las fechas visibles y el importe se presentan según la configuración local del proyecto (Chile/CLP).
     const monthLabel = new Intl.DateTimeFormat('es-CL', {
       month: 'long',
       year: 'numeric',
-    }).format(now);
-    const todayLabel = new Intl.DateTimeFormat('es-CL', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }).format(now);
-
-    // Calcula noches usando las fechas de entrada/salida; cada reserva se cuenta solo si ambas son válidas.
-    const confirmedNights = confirmedReservations.reduce((total, reservation) => {
-      const checkInKey = getDateKey(reservation.checkInDate);
-      const checkOutKey = getDateKey(reservation.checkOutDate);
-      if (!checkInKey || !checkOutKey) return total;
-
-      const checkIn = Date.parse(`${checkInKey}T00:00:00Z`);
-      const checkOut = Date.parse(`${checkOutKey}T00:00:00Z`);
-      return checkOut > checkIn
-        ? total + Math.round((checkOut - checkIn) / (24 * 60 * 60 * 1000))
-        : total;
-    }, 0);
-
-    const totalRevenue = confirmedReservations.reduce(
+    }).format(new Date());
+    const approvalPending = reservations.filter(
+      (reservation) => normalizeStatus(reservation.status) === 'CREADA'
+    ).length;
+    const activeStays = reservations.filter(
+      (reservation) => isInStayStatus(reservation.status)
+    ).length;
+    const confirmedReservations = reservations.filter((reservation) =>
+      confirmedReservationStatuses.has(normalizeStatus(reservation.status))
+    );
+    const confirmedValue = confirmedReservations.reduce(
       (total, reservation) => total + cleanCLP(reservation.amount),
       0
     );
 
-
     return {
       total: reservations.length,
-      confirmed: confirmedReservations.length,
-      confirmedPercentage: reservations.length
-        ? Math.round((confirmedReservations.length / reservations.length) * 100)
-        : 0,
-      arrivalsToday: reservations.filter(
-        (reservation) => getDateKey(reservation.checkInDate) === todayKey
-      ).length,
+      approvalPending,
+      activeStays,
+      confirmedValue,
       monthLabel: `${monthLabel.charAt(0).toLocaleUpperCase('es-CL')}${monthLabel.slice(1)}`,
-      todayLabel: `${todayLabel.charAt(0).toLocaleUpperCase('es-CL')}${todayLabel.slice(1)}`,
-      totalRevenue,
-      confirmedNights,
     };
   }, [reservations]);
 
   const getStatusBadge = (status: Reservation['status']) => {
-    switch (status) {
+    switch (normalizeStatus(status)) {
       case 'CREADA': return 'bg-[#EBF5FF] text-[#0066FF]';
       case 'CONFIRMADA': return 'bg-[#E6F4EA] text-[#1E8E3E]';
       case 'CHECKIN_PENDIENTE': 
-      case 'EN_ESTADÍA': return 'bg-[#FFF3E0] text-[#E65100]';
+      case 'EN_ESTADIA': return 'bg-[#FFF3E0] text-[#E65100]';
       case 'CHECKOUT': return 'bg-[#F3F4F6] text-[#4B5563]';
       case 'CANCELADA': return 'bg-[#FCE8E8] text-[#D93025]';
       default: return 'bg-gray-100 text-gray-600';
@@ -388,43 +356,43 @@ export default function Reservations() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
             <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-gray-500">Reservas este mes</span>
+              <span className="text-sm font-medium text-gray-500">Total de reservas</span>
               <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
             </div>
             <div>
               <div className="text-3xl font-semibold text-gray-900">{metrics.total}</div>
-              <div className="text-xs text-gray-400 mt-1">{metrics.monthLabel}</div>
+              <div className="text-xs text-gray-400 mt-1">Registradas en total</div>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
             <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-gray-500">Confirmadas</span>
+              <span className="text-sm font-medium text-gray-500">Pendientes de aprobación</span>
               <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{metrics.confirmed}</div>
-              <div className="text-xs text-gray-400 mt-1">{metrics.confirmedPercentage} % de las reservas</div>
+              <div className="text-3xl font-semibold text-gray-900">{metrics.approvalPending}</div>
+              <div className="text-xs text-gray-400 mt-1">Reservas creadas sin aprobar</div>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
             <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-gray-500">Llegadas hoy</span>
+              <span className="text-sm font-medium text-gray-500">Estadías activas</span>
               <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{metrics.arrivalsToday}</div>
-              <div className="text-xs text-gray-400 mt-1">{metrics.todayLabel}</div>
+              <div className="text-3xl font-semibold text-gray-900">{metrics.activeStays}</div>
+              <div className="text-xs text-gray-400 mt-1">Reservas en estado de estadía</div>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex flex-col justify-between h-32">
             <div className="flex justify-between items-start">
-              <span className="text-sm font-medium text-gray-500">Ingresos confirmados</span>
+              <span className="text-sm font-medium text-gray-500">Valor reservado</span>
               <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
             </div>
             <div>
-              <div className="text-3xl font-semibold text-gray-900">{formatCLP(metrics.totalRevenue)}</div>
+              <div className="text-3xl font-semibold text-gray-900">{formatCLP(metrics.confirmedValue)}</div>
               <div className="text-xs text-gray-400 mt-1">
-                {metrics.confirmed} {metrics.confirmed === 1 ? 'reserva' : 'reservas'} · {metrics.confirmedNights} {metrics.confirmedNights === 1 ? 'noche' : 'noches'}
+                Confirmadas y estadías no canceladas
               </div>
             </div>
           </div>
@@ -435,19 +403,25 @@ export default function Reservations() {
           
           {/* Filtros */}
           <div className="p-4 border-b border-gray-100 flex flex-col lg:flex-row items-center justify-between gap-4">
-            <div className="flex bg-gray-100 p-1 rounded-xl w-full lg:w-auto">
-              <button onClick={() => setStatusFilter('ALL')} className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${statusFilter === 'ALL' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                Todas · {reservations.length}
-              </button>
-              <button onClick={() => setStatusFilter('CONFIRMADA')} className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${statusFilter === 'CONFIRMADA' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                Confirmadas · {reservations.filter(r => r.status === 'CONFIRMADA').length}
-              </button>
-              <button onClick={() => setStatusFilter('CREADA')} className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${statusFilter === 'CREADA' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                Creadas · {reservations.filter(r => r.status === 'CREADA').length}
-              </button>
-              <button className="px-4 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700">
-                Más estados
-              </button>
+            <div className="w-full lg:w-64">
+              <label htmlFor="reservation-status-filter" className="sr-only">
+                Filtrar por estado
+              </label>
+              <select
+                id="reservation-status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="ALL">Todos los estados · {reservations.length}</option>
+                {reservationStatusFilters.map(({ status, label }) => (
+                  <option key={status} value={status}>
+                    {label} · {reservations.filter((reservation) =>
+                      normalizeStatus(reservation.status) === normalizeStatus(status)
+                    ).length}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex items-center gap-3 w-full lg:w-auto">
@@ -476,7 +450,6 @@ export default function Reservations() {
                     <th className="px-6 py-4">Huésped / Reserva</th>
                     <th className="px-6 py-4">Estadía</th>
                     <th className="px-6 py-4">Alojamiento</th>
-                    <th className="px-6 py-4">Canal</th>
                     <th className="px-6 py-4">Estado</th>
                     <th className="px-6 py-4 text-right">Total</th>
                     <th className="px-4 py-4 w-10"></th>
@@ -510,11 +483,8 @@ export default function Reservations() {
                           <div className="text-xs text-gray-400">{matchedUnit.location}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm text-gray-500">{res.channel}</span>
-                        </td>
-                        <td className="px-6 py-4">
                           <span className={`text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wide ${getStatusBadge(res.status)}`}>
-                            {res.status === 'EN_ESTADÍA' ? 'CHECK-IN' : res.status}
+                            {isInStayStatus(res.status) ? 'CHECK-IN' : res.status}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right text-sm font-bold text-gray-900">
@@ -634,27 +604,15 @@ export default function Reservations() {
                   <input type="date" required value={formData.checkOutDate} onChange={(e) => setFormData({ ...formData, checkOutDate: e.target.value })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Canal</label>
-                  <select value={formData.channel} onChange={(e) => setFormData({ ...formData, channel: e.target.value as Reservation['channel'] })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all bg-white">
-                    <option value="Directo">Directo</option>
-                    <option value="Booking.com">Booking.com</option>
-                    <option value="Expedia">Expedia</option>
-                    <option value="Web">Web</option>
-                    <option value="WhatsApp">WhatsApp</option>
-                  </select>
-                </div>
-<div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto Estimado</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   readOnly
-                  value={formData.amount ? `$${Number(formData.amount).toLocaleString('es-CL')}` : '$0'} 
-                  className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none bg-gray-50 text-gray-500 font-semibold cursor-not-allowed" 
-                  placeholder="$0" 
+                  value={formData.amount ? `$${Number(formData.amount).toLocaleString('es-CL')}` : '$0'}
+                  className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none bg-gray-50 text-gray-500 font-semibold cursor-not-allowed"
+                  placeholder="$0"
                 />
-              </div>
               </div>
               <div className="flex justify-end gap-3 pt-5 border-t border-gray-100">
                 <button type="button" onClick={() => setIsModalOpen(false)} disabled={isCreating} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
