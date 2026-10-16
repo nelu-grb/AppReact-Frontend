@@ -32,7 +32,7 @@ type ReservationUnitOption = { id: number; name: string; location: string; price
 const PAGE_SIZE = 10;
 
 export default function Reservations() {
-  const { fullName, email, isAdmin, isRecepcionista, isHuesped } = useUserRole();
+  const { fullName, email, isAdmin, isRecepcionista } = useUserRole();
   const [searchParams] = useSearchParams();
   const canManageStatus = isAdmin || isRecepcionista;
   const [availableUnits, setAvailableUnits] = useState<ReservationUnitOption[]>([]);
@@ -272,7 +272,7 @@ export default function Reservations() {
 
       setFormData({
         guestId: fullName || '',
-        guestEmail: '',
+        guestEmail: email,
         unitId: availableUnits[0]?.id ?? 0,
         checkInDate: '',
         checkOutDate: '',
@@ -294,15 +294,7 @@ export default function Reservations() {
     }
   };
 
-  const visibleReservations = isHuesped
-    ? reservations.filter((reservation) => {
-        const matchesEmail = email && reservation.guestEmail?.toLowerCase() === email.toLowerCase();
-        const matchesName = reservation.guestId?.toLowerCase() === fullName.toLowerCase();
-        return matchesEmail || matchesName;
-      })
-    : reservations;
-
-  const filteredReservations = visibleReservations.filter((res) => {
+  const filteredReservations = reservations.filter((res) => {
     const matchesStatus = statusFilter === 'ALL' || res.status === statusFilter;
     const matchesChannel = channelFilter === 'ALL' || res.channel === channelFilter;
     const matchesSearch =
@@ -353,9 +345,13 @@ export default function Reservations() {
           </div>
           <button
             onClick={() => {
-              setFormData((prev) => ({ ...prev, guestId: fullName || '' }));
-              setIsModalOpen(true);
-            }}
+                setFormData((prev) => ({
+                  ...prev,
+                  guestId: fullName || '',
+                  guestEmail: email,
+                }));
+                setIsModalOpen(true);
+              }}
             className="bg-[#CB6D51] hover:bg-[#b85e44] text-white px-4 py-2.5 rounded-lg text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -548,8 +544,8 @@ export default function Reservations() {
                   type="text"
                   required
                   value={formData.guestId}
-                  onChange={(e) => setFormData({ ...formData, guestId: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
+                  readOnly
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B] bg-gray-50"
                   placeholder="Ej. Juan Pérez"
                 />
               </div>
@@ -560,8 +556,8 @@ export default function Reservations() {
                   type="email"
                   required
                   value={formData.guestEmail}
-                  onChange={(e) => setFormData({ ...formData, guestEmail: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B]"
+                  readOnly
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1A423B] bg-gray-50"
                   placeholder="ejemplo@correo.com"
                 />
               </div>

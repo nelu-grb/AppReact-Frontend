@@ -89,10 +89,13 @@ export function useUserRole() {
       ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
       : fullName.slice(0, 2).toUpperCase() || 'US';
 
-  const lowerRoles = useMemo(() => roles.map((r) => r.toLowerCase()), [roles]);
+  const lowerRoles = useMemo(
+    () => roles.map((role) => role.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()),
+    [roles],
+  );
   const isAdmin = lowerRoles.includes('admin') || lowerRoles.includes('administrador');
   const isRecepcionista = lowerRoles.includes('recepcionista') || lowerRoles.includes('operador');
-  const isHuesped = lowerRoles.includes('huesped') || lowerRoles.includes('huésped');
+  const isHuesped = lowerRoles.includes('huesped') || lowerRoles.includes('guest') || lowerRoles.includes('guest_user');
   const isAuditor = lowerRoles.includes('auditor');
 
   const primaryRole =

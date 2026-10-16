@@ -66,7 +66,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             
-            <Route element={<ProtectedRoute allowedRoles={["Admin", "Recepcionista", "Huesped", "Huésped"]} />}>
+            <Route element={<ProtectedRoute allowedRoles={["Admin", "Recepcionista", "Huesped", "Huésped", "Guest", "Guest_User"]} />}>
               <Route path="/reservations" element={<Reservations />} />
             </Route>
 
