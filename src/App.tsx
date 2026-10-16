@@ -66,11 +66,11 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             
-            <Route element={<ProtectedRoute allowedRoles={["Admin", "Recepcionista", "Huesped", "Huésped", "Guest", "Guest_User"]} />}>
+            <Route element={<ProtectedRoute allowedRoles={["Admin", "Receptionist", "Huesped", "Huésped", "Guest", "Guest_User"]} />}>
               <Route path="/reservations" element={<Reservations />} />
             </Route>
 
-            <Route element={<ProtectedRoute allowedRoles={["Admin", "Recepcionista"]} />}>
+            <Route element={<ProtectedRoute allowedRoles={["Admin", "Receptionist"]} />}>
               <Route path="/catalog" element={<Catalog />} />
             </Route>
 
@@ -78,7 +78,7 @@ export default function App() {
               <Route path="/reports" element={<Reports />} />
             </Route>
 
-            <Route element={<ProtectedRoute allowedRoles={["Admin", "Auditor"]} />}>
+            <Route element={<ProtectedRoute allowedRoles={["Admin", "Audit"]} />}>
               <Route path="/audit" element={<Audit />} />
             </Route>
           </Route>

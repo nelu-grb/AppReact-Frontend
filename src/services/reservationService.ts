@@ -1,13 +1,9 @@
 import apiClient from './apiClient';
 
 export interface ReservationRequest {
-  guestId?: string;
-  guestId: string;
-  guestEmail: string;
-  unitId: number; // Estricto como número para coincidir con el Long/Integer de Java
+  unitId: number;
   startDate: string;
   endDate: string;
-  totalAmount: number;
 }
 
 export type ReservationStatus = 
@@ -21,15 +17,14 @@ export type ReservationStatus =
 // Estructura de respuesta devuelta por Spring Boot
 export interface ReservationResponse {
   id: number;
-  code: string;
-  guestId?: string;
   guestId: string;
   guestEmail: string;
   unitId: number;
   unitName?: string;
   startDate: string;
   endDate: string;
-  channel: string;
+  code?: string;
+  channel?: string;
   status: ReservationStatus;
   totalAmount: number;
 }

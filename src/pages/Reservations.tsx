@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useUserRole } from '../hooks/useUserRole';
-import { formatCLP, cleanCLP } from '../utils/formatters';
+import { formatCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
 import { parseApiError } from '../utils/errorHandler';
 import { NoticeBanner, type Notice } from '../components/NoticeBanner';
@@ -214,7 +214,7 @@ export default function Reservations() {
   const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.guestId || !formData.guestEmail || !formData.checkInDate || !formData.checkOutDate || !formData.amount) {
+    if (!formData.checkInDate || !formData.checkOutDate) {
       setNotice({
         type: 'error',
         message: 'Por favor completa todos los campos requeridos.',
@@ -230,22 +230,10 @@ export default function Reservations() {
       return;
     }
 
-    const numericAmount = cleanCLP(formData.amount);
-    if (numericAmount <= 0) {
-      setNotice({
-        type: 'error',
-        message: 'El monto debe ser superior a $0.',
-      });
-      return;
-    }
-
     const payload: ReservationRequest = {
       unitId: formData.unitId,
-      guestId: formData.guestId,
-      guestEmail: formData.guestEmail,
       startDate: formData.checkInDate,
       endDate: formData.checkOutDate,
-      totalAmount: numericAmount,
     };
 
     try {
@@ -256,9 +244,9 @@ export default function Reservations() {
       const randomNum = Math.floor(1000 + Math.random() * 9000);
       const newReservation: Reservation = {
         id: String(backendResponse?.id || Date.now()),
-        code: backendResponse?.code || `R-2026-${randomNum}`,
-        guestId: formData.guestId,
-        guestEmail: formData.guestEmail,
+        code: backendResponse.code || `R-2026-${randomNum}`,
+        guestId: backendResponse.guestId,
+        guestEmail: backendResponse.guestEmail,
         unitName: selectedUnit ? selectedUnit.name : `Unidad #${formData.unitId}`,
         checkInDate: formData.checkInDate,
         checkOutDate: formData.checkOutDate,

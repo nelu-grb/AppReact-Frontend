@@ -93,15 +93,15 @@ export function useUserRole() {
     () => roles.map((role) => role.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()),
     [roles],
   );
-  const isAdmin = lowerRoles.includes('admin') || lowerRoles.includes('administrador');
-  const isRecepcionista = lowerRoles.includes('recepcionista') || lowerRoles.includes('operador');
+  const isAdmin = lowerRoles.includes('admin');
+  const isRecepcionista = lowerRoles.includes('receptionist');
   const isHuesped = lowerRoles.includes('huesped') || lowerRoles.includes('guest') || lowerRoles.includes('guest_user');
-  const isAuditor = lowerRoles.includes('auditor');
+  const isAuditor = lowerRoles.includes('audit');
 
   const primaryRole =
     isAdmin ? 'ADMIN' :
-    isRecepcionista ? 'RECEPCIONISTA' :
-    isAuditor ? 'AUDITOR' :
+    isRecepcionista ? 'RECEPTIONIST' :
+    isAuditor ? 'AUDIT' :
     isHuesped ? 'HUÉSPED' : 'USUARIO';
 
   const hasAnyRole = (allowedRoles: string[]): boolean => {
