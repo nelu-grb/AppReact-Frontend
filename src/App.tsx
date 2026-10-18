@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
@@ -10,8 +9,25 @@ import Reservations from './pages/Reservations';
 import Catalog from './pages/Catalog';
 import Reports from './pages/Reports';
 import Audit from './pages/Audit';
+import PaymentResult from './pages/PaymentResult';
 
+/**
+ * Componente de carga que se muestra durante la verificación de sesión y roles
+ */
+function LoadingScreen() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-[#F4F6F9] font-sans">
+      <div className="text-center">
+        <div className="mb-3 h-10 w-10 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto"></div>
+        <span className="text-lg font-semibold text-gray-700">Verificando permisos...</span>
+      </div>
+    </div>
+  );
+}
 
+/**
+ * Guardián de rutas protegidas por autenticación y roles
+ */
 function ProtectedRoute({ 
   allowedRoles 
 }: { 
@@ -19,20 +35,26 @@ function ProtectedRoute({
 }) {
   const { inProgress, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();
-  const { hasAnyRole } = useAuth();
+  
+  // 1. Extraemos 'rolesLoading' del contexto de autenticación
+  const { hasAnyRole, rolesLoading } = useAuth();
 
-  if (inProgress !== InteractionStatus.None) {
-    return null;
+  // 2. Si MSAL está procesando O el contexto aún está cargando roles, mostramos el spinner
+  if (inProgress !== InteractionStatus.None || rolesLoading) {
+    return <LoadingScreen />;
   }
 
+  // 3. Si no está autenticado, redirigimos al Login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
+  // 4. Si la cuenta aún no se ha activado, esperamos
   if (accounts.length === 0) {
-    return null;
+    return <LoadingScreen />;
   }
 
+  // 5. Ahora que rolesLoading es FALSE, evaluamos de forma segura los permisos
   if (allowedRoles && !hasAnyRole(allowedRoles)) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -43,9 +65,11 @@ function ProtectedRoute({
 export default function App() {
   const { inProgress } = useMsal();
   const isAuthenticated = useIsAuthenticated();
+  const { rolesLoading } = useAuth();
 
-  if (inProgress !== InteractionStatus.None) {
-    return null;
+  // Evitamos renderizar las rutas si MSAL o el AuthContext se están inicializando
+  if (inProgress !== InteractionStatus.None || rolesLoading) {
+    return <LoadingScreen />;
   }
 
   return (
@@ -57,8 +81,13 @@ export default function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
         />
 
-        {/* Todas las rutas privadas usando tu componente Layout central */}
+        {/* Rutas privadas */}
         <Route element={<ProtectedRoute />}>
+          
+          {/* Ruta de pago en pantalla completa */}
+          <Route path="/payment-result" element={<PaymentResult />} />
+
+          {/* Rutas con menú lateral */}
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             
@@ -80,6 +109,7 @@ export default function App() {
           </Route>
         </Route>
 
+        {/* Redirecciones universales */}
         <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

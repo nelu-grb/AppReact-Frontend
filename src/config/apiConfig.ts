@@ -18,4 +18,8 @@ export const API_ENDPOINTS = {
   audit: {
     list: "/audit",
   },
+  reports: {
+    list: "/reports",
+    kpis: "/reports/kpis",
+  },
 };

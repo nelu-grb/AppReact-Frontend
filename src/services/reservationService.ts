@@ -6,7 +6,6 @@ export interface ReservationRequest {
   unitId: number; // Estricto como número para coincidir con el Long/Integer de Java
   startDate: string;
   endDate: string;
-  channel: 'Web' | 'Instagram' | 'WhatsApp' | 'Directo';
   totalAmount: number;
 }
 
@@ -14,12 +13,13 @@ export type ReservationStatus =
   | 'CREADA' 
   | 'CONFIRMADA' 
   | 'CHECKIN_PENDIENTE' 
-  | 'EN_ESTADÍA' 
+  | 'EN_ESTADIA' 
   | 'CHECKOUT' 
   | 'CANCELADA';
 
 // Estructura de respuesta devuelta por Spring Boot
 export interface ReservationResponse {
+  unit: any;
   id: number;
   code: string;
   guestId: string;
@@ -28,7 +28,6 @@ export interface ReservationResponse {
   unitName?: string;
   startDate: string;
   endDate: string;
-  channel: string;
   status: ReservationStatus;
   totalAmount: number;
 }
