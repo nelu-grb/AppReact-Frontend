@@ -24,7 +24,7 @@ export interface Reservation {
   unitName: string;
   checkInDate: string;
   checkOutDate: string;
-  status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADÍA' | 'CHECKOUT' | 'CANCELADA';
+  status: 'CREADA' | 'CONFIRMADA' | 'CHECKIN_PENDIENTE' | 'EN_ESTADIA' | 'CHECKOUT' | 'CANCELADA';
   amount: string;
 }
 
@@ -32,7 +32,7 @@ const reservationStatusFilters: Array<{ status: Reservation['status']; label: st
   { status: 'CREADA', label: 'Creadas' },
   { status: 'CONFIRMADA', label: 'Confirmadas' },
   { status: 'CHECKIN_PENDIENTE', label: 'Check-in pendiente' },
-  { status: 'EN_ESTADÍA', label: 'En estadía' },
+  { status: 'EN_ESTADIA', label: 'En estadía' },
   { status: 'CHECKOUT', label: 'Check-out' },
   { status: 'CANCELADA', label: 'Canceladas' },
 ];
@@ -56,8 +56,34 @@ const normalizeStatus = (status: string) =>
 
 const isInStayStatus = (status: string) => normalizeStatus(status) === 'EN_ESTADIA';
 
+type ReservationAction = {
+  label: string;
+  nextStatus: Reservation['status'];
+  danger?: boolean;
+};
+
+// Transiciones permitidas por el backend (ReservationStatus.canTransitionTo)
+const getAvailableActions = (status: Reservation['status']): ReservationAction[] => {
+  switch (normalizeStatus(status)) {
+    case 'CREADA':
+      return [{ label: 'Cancelar reserva', nextStatus: 'CANCELADA', danger: true }];
+    case 'CONFIRMADA':
+      return [
+        { label: 'Registrar pago recibido', nextStatus: 'CHECKIN_PENDIENTE' },
+        { label: 'Realizar check-in', nextStatus: 'EN_ESTADIA' },
+        { label: 'Cancelar reserva', nextStatus: 'CANCELADA', danger: true },
+      ];
+    case 'CHECKIN_PENDIENTE':
+      return [{ label: 'Realizar check-in', nextStatus: 'EN_ESTADIA' }];
+    case 'EN_ESTADIA':
+      return [{ label: 'Realizar check-out', nextStatus: 'CHECKOUT' }];
+    default:
+      return [];
+  }
+};
+
 export default function Reservations() {
-  const { fullName, isAdmin, isRecepcionista, isHuesped } = useAuth();
+  const { fullName, userEmail, isAdmin, isRecepcionista, isHuesped } = useAuth();
   const canManageStatus = isAdmin || isRecepcionista;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -70,6 +96,7 @@ export default function Reservations() {
 
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   
   // Estado crucial para que funcione el botón
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -140,6 +167,34 @@ export default function Reservations() {
     } finally {
       setUpdatingReservationId(null);
     }
+  };
+
+  // Cierra el menú de acciones al hacer clic fuera o presionar Escape
+  useEffect(() => {
+    if (!openMenuId) return;
+    const closeMenu = () => setOpenMenuId(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu();
+    };
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', closeMenu);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuId]);
+
+  const handleActionClick = (reservation: Reservation, action: ReservationAction) => {
+    setOpenMenuId(null);
+    if (
+      action.danger &&
+      !window.confirm(
+        `¿Cancelar la reserva de ${reservation.guestId} (${reservation.code})? Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+    handleUpdateStatus(reservation.id, action.nextStatus);
   };
 
   const handlePayReservation = async (reservationId: string) => {
@@ -339,7 +394,13 @@ export default function Reservations() {
             
             <button
               onClick={() => {
-                setFormData((prev) => ({ ...prev, guestId: fullName || '' }));
+                // Huésped: se precargan los datos de su cuenta (el backend usará esos).
+                // Recepción/Admin: campos vacíos para escribir los datos del huésped real.
+                setFormData((prev) => ({
+                  ...prev,
+                  guestId: canManageStatus ? '' : fullName || '',
+                  guestEmail: canManageStatus ? '' : userEmail || '',
+                }));
                 setIsModalOpen(true);
               }}
               className="bg-[#0066FF] hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors flex items-center gap-2"
@@ -456,9 +517,11 @@ export default function Reservations() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredReservations.map((res) => {
+                  {filteredReservations.map((res, index) => {
                     const matchedUnit = availableUnits.find(u => u.name === res.unitName) || { location: 'Por asignar' };
-                    
+                    const rowActions = canManageStatus ? getAvailableActions(res.status) : [];
+                    const openUp = index >= filteredReservations.length - 2;
+
                     return (
                       <tr key={res.id} className="hover:bg-gray-50 transition-colors group">
                         <td className="px-6 py-4">
@@ -519,7 +582,7 @@ export default function Reservations() {
                                       ¡Pagada! Lista para tu llegada.
                                     </span>
                                   )}
-                                  {isAdmin && res.status === 'CREADA' && (
+                                  {canManageStatus && normalizeStatus(res.status) === 'CREADA' && (
                                     <button
                                       type="button"
                                       onClick={() => handleUpdateStatus(res.id, 'CONFIRMADA')}
@@ -529,9 +592,46 @@ export default function Reservations() {
                                       {updatingReservationId === res.id ? 'Aprobando…' : 'Aprobar'}
                                     </button>
                                   )}
-                                  {canManageStatus && <button className="text-gray-400 hover:text-gray-600">
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
-                                  </button>}
+                                  {rowActions.length > 0 && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        aria-label="Acciones de la reserva"
+                                        aria-haspopup="menu"
+                                        aria-expanded={openMenuId === res.id}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setOpenMenuId(openMenuId === res.id ? null : res.id);
+                                        }}
+                                        className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition-colors"
+                                      >
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
+                                      </button>
+                                      {openMenuId === res.id && (
+                                        <div
+                                          role="menu"
+                                          className={`absolute right-0 z-20 w-56 rounded-xl border border-gray-100 bg-white py-1 shadow-lg ${openUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+                                        >
+                                          {rowActions.map((action) => (
+                                            <button
+                                              key={action.label}
+                                              type="button"
+                                              role="menuitem"
+                                              onClick={() => handleActionClick(res, action)}
+                                              disabled={updatingReservationId === res.id}
+                                              className={`block w-full px-3 py-2 text-left text-xs font-medium transition-colors disabled:opacity-50 ${
+                                                action.danger
+                                                  ? 'text-red-600 hover:bg-red-50'
+                                                  : 'text-gray-700 hover:bg-gray-50'
+                                              }`}
+                                            >
+                                              {action.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -572,11 +672,38 @@ export default function Reservations() {
             <form onSubmit={handleCreateReservation} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Huésped</label>
-                <input type="text" required value={formData.guestId} onChange={(e) => setFormData({ ...formData, guestId: e.target.value })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all" />
+                <input
+                  type="text"
+                  required
+                  readOnly={!canManageStatus}
+                  value={formData.guestId}
+                  onChange={(e) => setFormData({ ...formData, guestId: e.target.value })}
+                  className={`w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none transition-all ${
+                    canManageStatus
+                      ? 'focus:ring-2 focus:ring-[#0066FF] focus:border-transparent'
+                      : 'bg-gray-50 text-gray-500 cursor-not-allowed'
+                  }`}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                <input type="email" required value={formData.guestEmail} onChange={(e) => setFormData({ ...formData, guestEmail: e.target.value })} className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF] focus:border-transparent transition-all" />
+                <input
+                  type="email"
+                  required
+                  readOnly={!canManageStatus}
+                  value={formData.guestEmail}
+                  onChange={(e) => setFormData({ ...formData, guestEmail: e.target.value })}
+                  className={`w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none transition-all ${
+                    canManageStatus
+                      ? 'focus:ring-2 focus:ring-[#0066FF] focus:border-transparent'
+                      : 'bg-gray-50 text-gray-500 cursor-not-allowed'
+                  }`}
+                />
+                {!canManageStatus && (
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Se usarán los datos de tu cuenta para registrar esta reserva.
+                  </p>
+                )}
               </div>
 <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Alojamiento</label>
