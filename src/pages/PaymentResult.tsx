@@ -16,7 +16,7 @@ export default function PaymentResult() {
           <>
             <div className="text-green-500 text-5xl mb-4">✅</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Pago Exitoso!</h2>
-            <p className="text-gray-600 mb-6">Tu reserva #{id} está confirmada y lista para tu llegada.</p>
+            <p className="text-gray-600 mb-6">Tu reserva #{id} está pagada y lista para tu llegada.</p>
           </>
         )}
 
@@ -31,8 +31,14 @@ export default function PaymentResult() {
         {(status === 'rejected' || status === 'error') && (
           <>
             <div className="text-red-500 text-5xl mb-4">❌</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Pago Rechazado</h2>
-            <p className="text-gray-600 mb-6">Hubo un problema al procesar tu tarjeta o conectarse al banco.</p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              {status === 'rejected' ? 'Pago Rechazado' : 'No se pudo confirmar el pago'}
+            </h2>
+            <p className="text-gray-600 mb-6">
+              {status === 'rejected'
+                ? 'El banco rechazó la transacción. Tu reserva sigue guardada.'
+                : 'Hubo un problema al confirmar la transacción con Webpay.'}
+            </p>
           </>
         )}
 
