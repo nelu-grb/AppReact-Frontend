@@ -59,14 +59,15 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const status = error.response?.status;
 
-    if (status === 401) {
-      // await msalInstance.logoutRedirect({
-      //   postLogoutRedirectUri: `${window.location.origin}/login`,
-      // });
-    }
-    
+    // 401 (sesión expirada): solo propagamos el error.
+    // No forzamos logout/redirección aquí para no interrumpir al usuario.
+
+    // 403 (sin permisos): NO redirigir ni recargar la página.
+    // Antes se hacía `window.location.href = '/dashboard'`, lo que provocaba un
+    // bucle infinito de recarga: el propio Dashboard volvía a pedir endpoints
+    // que respondían 403 y se recargaba otra vez sin fin.
     if (status === 403) {
-      window.location.href = '/dashboard';
+      console.warn('Acceso denegado (403) en', error.config?.url);
     }
 
     return Promise.reject(error);

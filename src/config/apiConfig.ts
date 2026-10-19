@@ -16,6 +16,10 @@ export const API_ENDPOINTS = {
     delete: (id: string) => `/reservations/${id}`,
   },
   audit: {
-    list: "/api/audit",
+    list: "/audit",
+  },
+  reports: {
+    list: "/reports",
+    kpis: "/reports/kpis",
   },
 };
