@@ -95,7 +95,7 @@ export default function App() {
               <Route path="/reservations" element={<Reservations />} />
             </Route>
 
-            <Route element={<ProtectedRoute allowedRoles={["Admin", "Recepcionista"]} />}>
+            <Route element={<ProtectedRoute allowedRoles={["Admin", "Recepcionista", "Huesped", "Huésped"]} />}>
               <Route path="/catalog" element={<Catalog />} />
             </Route>
 

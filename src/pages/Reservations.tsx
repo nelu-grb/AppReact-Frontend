@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatCLP, cleanCLP } from '../utils/formatters';
 import { AsyncStateHandler } from '../utils/AsyncStateHandler';
@@ -85,6 +86,8 @@ const getAvailableActions = (status: Reservation['status']): ReservationAction[]
 export default function Reservations() {
   const { fullName, userEmail, isAdmin, isRecepcionista, isHuesped } = useAuth();
   const canManageStatus = isAdmin || isRecepcionista;
+  const [searchParams] = useSearchParams();
+  const requestedUnitId = Number(searchParams.get('unitId')) || null;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -98,19 +101,19 @@ export default function Reservations() {
   const [searchQuery, setSearchQuery] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   
-  // Estado crucial para que funcione el botón
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Si se llega desde el catálogo con ?unitId=..., el modal se abre con esa unidad.
+  const [isModalOpen, setIsModalOpen] = useState(() => Boolean(requestedUnitId));
 
 
   const [availableUnits, setAvailableUnits] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     guestId: fullName || '',
-    guestEmail: '',
-    unitId: 1,
+    guestEmail: isHuesped ? userEmail || '' : '',
+    unitId: requestedUnitId || 1,
     checkInDate: '',
     checkOutDate: '',
-    amount: '$120.000',
+    amount: '',
   });
 
  const fetchReservations = useCallback(async () => {
@@ -736,7 +739,7 @@ export default function Reservations() {
                 <input
                   type="text"
                   readOnly
-                  value={formData.amount ? `$${Number(formData.amount).toLocaleString('es-CL')}` : '$0'}
+                  value={formatCLP(formData.amount)}
                   className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm outline-none bg-gray-50 text-gray-500 font-semibold cursor-not-allowed"
                   placeholder="$0"
                 />

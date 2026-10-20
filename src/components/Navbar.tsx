@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const { instance } = useMsal();
-  const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isAuditor} = useAuth();
+  const { fullName, initials, primaryRole, isAdmin, isRecepcionista, isHuesped, isAuditor} = useAuth();
 
   const handleLogout = () => {
     instance.logoutRedirect({
@@ -15,7 +15,7 @@ export default function Navbar() {
   const navLinks = [
     { label: 'Resumen', path: '/dashboard', show: true },
     { label: 'Reservas', path: '/reservations', show: !isAuditor },
-    { label: 'Catálogo', path: '/catalog', show: isAdmin || isRecepcionista },
+    { label: 'Catálogo', path: '/catalog', show: isAdmin || isRecepcionista || isHuesped },
     { label: 'Reportes', path: '/reports', show: isAdmin },
     { label: 'Auditoría', path: '/audit', show: isAdmin || isAuditor },
   ];
