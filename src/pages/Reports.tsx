@@ -3,7 +3,7 @@ import { isAxiosError } from 'axios';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../services/apiClient';
 import { API_ENDPOINTS } from '../config/apiConfig';
-import { getReservations, type ReservationResponse } from '../services/reservationService';
+import { getActiveOccupancy, getReservations, type ReservationResponse } from '../services/reservationService';
 import {
   fetchReportKpis,
   fetchReportRows,
@@ -33,6 +33,7 @@ interface UnitDto {
 
 interface ReportData {
   kpis: ReportKpis;
+  activeOccupancy: number;
   rows: ReportRow[];
   reservations: ReservationResponse[];
   units: UnitDto[];
@@ -115,8 +116,9 @@ export default function Reports() {
     setError(null);
     setForbidden(false);
     try {
-      const [kpis, rows, reservations, unitsResponse] = await Promise.all([
+      const [kpis, activeOccupancy, rows, reservations, unitsResponse] = await Promise.all([
         fetchReportKpis(),
+        getActiveOccupancy(),
         fetchReportRows(),
         getReservations(),
         apiClient.get<UnitDto[] | { content: UnitDto[] }>(API_ENDPOINTS.catalog.list),
@@ -126,7 +128,7 @@ export default function Reports() {
         ? unitsResponse.data
         : unitsResponse.data?.content ?? [];
 
-      setData({ kpis, rows, reservations, units: rawUnits });
+      setData({ kpis, activeOccupancy, rows, reservations, units: rawUnits });
       setLastUpdated(new Date());
     } catch (caught) {
       if (isAxiosError(caught) && caught.response?.status === 403) {
@@ -145,13 +147,12 @@ export default function Reports() {
   }, [load]);
 
   const rangeHours = RANGE_OPTIONS.find((option) => option.value === timeRange)?.hours ?? 24;
-  const rangeLabel = RANGE_OPTIONS.find((option) => option.value === timeRange)?.label ?? '';
   const cutoff = useMemo(() => Date.now() - rangeHours * 60 * 60 * 1000, [rangeHours]);
 
   const analytics = useMemo(() => {
     if (!data) return null;
 
-    const { kpis, rows, reservations, units } = data;
+    const { kpis, activeOccupancy, rows, reservations, units } = data;
 
     // 1. Reservas por hora: buckets calculados por ms-report y filtrados por rango.
     const buckets = Object.entries(kpis.reservationsByHour ?? {})
@@ -194,8 +195,7 @@ export default function Reports() {
         ? cycleSamples.reduce((sum, minutes) => sum + minutes, 0) / cycleSamples.length
         : Number(kpis.averageCycleTimeMinutes) || 0;
 
-    // 3. Ocupación activa: métrica de estado (valor actual, no depende del rango).
-    const activeOccupancy = Number(kpis.activeOccupancy) || 0;
+    // 3. Ocupación activa: métrica de estado calculada desde ms-reservations.
     const totalUnits = units.length;
     const occupancyPct = totalUnits > 0 ? (activeOccupancy / totalUnits) * 100 : 0;
 
@@ -249,64 +249,6 @@ export default function Reports() {
       recentEvents,
     };
   }, [data, cutoff]);
-
-  const handleExport = () => {
-    if (!data || !analytics) return;
-
-    const separator = ';';
-    const lines: string[] = [];
-    lines.push(['Reportería AndesStay', 'Generado', new Date().toLocaleString('es-CL')].join(separator));
-    lines.push(['Rango', rangeLabel].join(separator));
-    lines.push(['Reservas en el rango', analytics.totalInRange].join(separator));
-    lines.push(['Reservas por hora (promedio por hora activa)', analytics.avgPerHour.toFixed(1)].join(separator));
-    if (analytics.peakBucket) {
-      lines.push(
-        ['Hora punta', formatDayHourUtc(analytics.peakBucket.at), `${analytics.peakBucket.count} reservas`].join(separator),
-      );
-    }
-    lines.push(
-      [
-        'Tiempo de ciclo promedio (min)',
-        Math.round(analytics.cycleMinutes),
-        analytics.cycleSamplesCount > 0 ? `${analytics.cycleSamplesCount} confirmaciones en el rango` : 'histórico global',
-      ].join(separator),
-    );
-    lines.push(
-      [
-        'Ocupación activa',
-        `${analytics.occupancyPct.toFixed(1)}%`,
-        `${analytics.activeOccupancy} de ${analytics.totalUnits} unidades en estadía`,
-      ].join(separator),
-    );
-    lines.push('');
-    lines.push(
-      ['Unidad', 'Código', 'Destino', 'Tipo', 'Reservas', 'Demanda relativa (%)', 'Ingresos (CLP)'].join(separator),
-    );
-    for (const unit of analytics.topUnits) {
-      const demand = analytics.maxBookings > 0 ? Math.round((unit.bookings / analytics.maxBookings) * 100) : 0;
-      lines.push(
-        [
-          `"${unit.name.replaceAll('"', '""')}"`,
-          `U${unit.unitId}`,
-          `"${unit.city.replaceAll('"', '""')}"`,
-          unitTypeLabel(unit.type),
-          unit.bookings,
-          demand,
-          Math.round(unit.revenue),
-        ].join(separator),
-      );
-    }
-
-    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `reporteria-andesstay-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  };
 
   if (!canViewReports) {
     return (
@@ -396,15 +338,6 @@ export default function Reports() {
               className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-2xs disabled:opacity-50"
             >
               {loading ? 'Actualizando…' : 'Actualizar'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={!data || !analytics}
-              className="bg-[#1A423B] hover:bg-[#13332d] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors shadow-2xs flex items-center gap-2 disabled:opacity-50"
-            >
-              Exportar CSV
             </button>
           </div>
         </div>
