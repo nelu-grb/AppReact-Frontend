@@ -37,11 +37,6 @@ export const getReservations = async (): Promise<ReservationResponse[]> => {
   return res.data;
 };
 
-export const getActiveOccupancy = async (): Promise<number> => {
-  const res = await apiClient.get<number>('/reservations/active-occupancy');
-  return res.data;
-};
-
 export const createReservation = async (data: ReservationRequest): Promise<ReservationResponse> => {
   const res = await apiClient.post<ReservationResponse>('/reservations', data);
   return res.data;
